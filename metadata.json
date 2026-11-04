@@ -1,0 +1,6 @@
+{
+  "name": "UniClass Hub - Manajemen Jadwal & Pengumuman Kelas",
+  "description": "Aplikasi terpadu manajemen jadwal kuliah, pengumuman kelas, dan pengingat dengan sinkronisasi Google Calendar, offline mode, notifikasi push, serta portal web admin analitik.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

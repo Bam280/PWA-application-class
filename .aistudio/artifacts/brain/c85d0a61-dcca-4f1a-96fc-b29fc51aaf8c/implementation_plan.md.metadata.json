@@ -1,0 +1,6 @@
+{
+  "summary": "Rencana implementasi arsitektur sistem manajemen kelas universitas (UniClass Hub) lintas platform (Android/iOS & Web Portal Admin) dengan Firebase Auth SSO, sinkronisasi Google Calendar & file .ics, notifikasi push real-time, mode offline terpadu, dan dashboard analitik engagement mahasiswa.",
+  "updatedAt": "2026-11-04T02:13:47.534045480Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

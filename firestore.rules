@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isCurrentUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'lukigio23@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Entity validations
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'displayName', 'role']) &&
+             data.email is string && data.email.size() <= 128 &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.role in ['student', 'admin'];
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasAll(['courseName', 'courseCode', 'dayOfWeek', 'startTime', 'endTime', 'room']) &&
+             data.courseName is string && data.courseName.size() <= 120 &&
+             data.courseCode is string && data.courseCode.size() <= 30 &&
+             data.dayOfWeek is number && data.dayOfWeek >= 1 && data.dayOfWeek <= 7 &&
+             data.startTime is string && data.startTime.size() <= 10 &&
+             data.endTime is string && data.endTime.size() <= 10 &&
+             data.room is string && data.room.size() <= 50;
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasAll(['title', 'content', 'priority', 'category', 'authorId', 'publishedAt']) &&
+             data.title is string && data.title.size() <= 160 &&
+             data.content is string && data.content.size() <= 5000 &&
+             data.priority in ['normal', 'important', 'urgent'] &&
+             data.category in ['academic', 'exam', 'event', 'schedule_change'] &&
+             data.authorId is string && data.authorId.size() <= 128;
+    }
+
+    function isValidReminder(data) {
+      return data.keys().hasAll(['title', 'courseName', 'deadline', 'reminderType']) &&
+             data.title is string && data.title.size() <= 160 &&
+             data.courseName is string && data.courseName.size() <= 120 &&
+             data.deadline is string && data.deadline.size() <= 50 &&
+             data.reminderType in ['assignment', 'quiz', 'exam', 'project'];
+    }
+
+    function isValidReadReceipt(data, announcementId) {
+      return data.keys().hasAll(['announcementId', 'userId', 'readAt']) &&
+             data.announcementId == announcementId &&
+             data.userId == request.auth.uid &&
+             data.readAt is string && data.readAt.size() <= 50;
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create: if isCurrentUser(userId) && isValidUser(incoming());
+      allow update: if (isCurrentUser(userId) || isAdmin()) && isValidUser(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Schedules collection
+    match /schedules/{scheduleId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidSchedule(incoming());
+      allow update: if isAdmin() && isValidSchedule(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Announcements collection
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidAnnouncement(incoming());
+      allow update: if (
+        (isAdmin() && isValidAnnouncement(incoming())) ||
+        // Allow students to increment readCount safely
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['readCount']) && incoming().readCount is number)
+      );
+      allow delete: if isAdmin();
+
+      // Read receipts subcollection
+      match /reads/{readId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && (readId == request.auth.uid || incoming().userId == request.auth.uid) && isValidReadReceipt(incoming(), announcementId);
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Reminders collection
+    match /reminders/{reminderId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidReminder(incoming());
+      allow update: if isAdmin() && isValidReminder(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}

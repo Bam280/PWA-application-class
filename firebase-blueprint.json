@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "User profile for university students and lecturers",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["student", "admin"] },
+        "nim": { "type": "string", "maxLength": 30 },
+        "major": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["email", "displayName", "role"]
+    },
+    "admin": {
+      "title": "Admin",
+      "description": "Privileged administrator document for lecturers and academic staff",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["admin", "superadmin"] },
+        "addedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["email", "role"]
+    },
+    "schedule": {
+      "title": "Schedule",
+      "description": "University class weekly schedule item",
+      "type": "object",
+      "properties": {
+        "courseName": { "type": "string", "maxLength": 120 },
+        "courseCode": { "type": "string", "maxLength": 30 },
+        "lecturer": { "type": "string", "maxLength": 100 },
+        "dayOfWeek": { "type": "number" },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "room": { "type": "string", "maxLength": 50 },
+        "building": { "type": "string", "maxLength": 100 },
+        "classType": { "type": "string", "enum": ["offline", "online", "hybrid"] },
+        "notes": { "type": "string", "maxLength": 300 },
+        "classId": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["courseName", "courseCode", "dayOfWeek", "startTime", "endTime", "room"]
+    },
+    "announcement": {
+      "title": "Announcement",
+      "description": "Official class broadcast notification or news",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 160 },
+        "content": { "type": "string", "maxLength": 3000 },
+        "priority": { "type": "string", "enum": ["normal", "important", "urgent"] },
+        "category": { "type": "string", "enum": ["academic", "exam", "event", "schedule_change"] },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "publishedAt": { "type": "string", "maxLength": 50 },
+        "readCount": { "type": "number" },
+        "classId": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "content", "priority", "category", "authorId", "publishedAt"]
+    },
+    "reminder": {
+      "title": "Reminder",
+      "description": "Academic deadline or class reminder",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 160 },
+        "courseName": { "type": "string", "maxLength": 120 },
+        "deadline": { "type": "string", "maxLength": 50 },
+        "reminderType": { "type": "string", "enum": ["assignment", "quiz", "exam", "project"] },
+        "description": { "type": "string", "maxLength": 1000 },
+        "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+        "classId": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["title", "courseName", "deadline", "reminderType"]
+    },
+    "readReceipt": {
+      "title": "ReadReceipt",
+      "description": "Analytics tracking event when a student views an announcement",
+      "type": "object",
+      "properties": {
+        "announcementId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "userEmail": { "type": "string", "maxLength": 128 },
+        "readAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["announcementId", "userId", "readAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": "admin",
+      "description": "Admin identity records"
+    },
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "User profile data"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "schedule",
+      "description": "Weekly class schedules"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "announcement",
+      "description": "Class notices and announcements"
+    },
+    "/reminders/{reminderId}": {
+      "schema": "reminder",
+      "description": "Class deadlines and reminders"
+    },
+    "/announcements/{announcementId}/reads/{readId}": {
+      "schema": "readReceipt",
+      "description": "Read receipts and view tracking for announcements"
+    }
+  }
+}
