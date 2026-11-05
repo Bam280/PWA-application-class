@@ -31,6 +31,8 @@ import {
   Settings,
   UserCheck,
   Info,
+  LogOut,
+  Smartphone,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClassData } from '../context/ClassDataContext';
@@ -51,8 +53,14 @@ import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
 
-export const AdminPortal: React.FC = () => {
-  const { user, role, switchRole } = useAuth();
+interface AdminPortalProps {
+  onOpenApp: () => void;
+  onOpenNotifications: () => void;
+  unreadCount: number;
+}
+
+export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotifications, unreadCount }) => {
+  const { user, role, signOut } = useAuth();
   const {
     schedules,
     announcements,
@@ -423,16 +431,10 @@ export const AdminPortal: React.FC = () => {
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
-              onClick={() => switchRole('class_admin')}
+              onClick={onOpenApp}
               className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition-all shadow-xs"
             >
-              Uji Coba Masuk Sebagai Admin Kelas (Ketua Kelas)
-            </button>
-            <button
-              onClick={() => switchRole('super_admin')}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl transition-all shadow-xs"
-            >
-              Uji Coba Masuk Sebagai Super Admin
+              Buka Aplikasi Kelas
             </button>
           </div>
         </div>
@@ -443,8 +445,8 @@ export const AdminPortal: React.FC = () => {
   return (
     <div className="w-full max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 animate-in fade-in duration-300">
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-full lg:w-64 bg-white border border-slate-200 rounded-3xl p-4 shrink-0 shadow-xs flex flex-col justify-between">
-        <div className="space-y-4">
+      <aside className="w-full lg:w-64 bg-white border border-slate-200 rounded-3xl p-3 sm:p-4 shrink-0 shadow-xs flex flex-col justify-between gap-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100dvh-3rem)] lg:overflow-y-auto">
+        <div className="space-y-3 lg:space-y-4">
           {/* Admin Profile Box */}
           <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-center gap-3">
             <img
@@ -466,10 +468,23 @@ export const AdminPortal: React.FC = () => {
               <h4 className="text-xs font-bold text-slate-900 truncate">{user?.displayName}</h4>
               <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
             </div>
+            <button
+              onClick={onOpenNotifications}
+              className="relative p-2 rounded-xl bg-white hover:bg-amber-100 border border-amber-200 text-amber-900 transition-colors shrink-0"
+              title="Notifikasi"
+              aria-label="Buka notifikasi"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-slate-950 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Navigation Items */}
-          <nav className="space-y-1 text-xs">
+          <nav className="flex lg:flex-col gap-1 text-xs overflow-x-auto [scrollbar-width:none] lg:overflow-visible -mx-1 px-1 pb-1 lg:pb-0 lg:mx-0 lg:px-0 [&>button]:shrink-0 [&>button]:w-auto lg:[&>button]:w-full [&>button]:gap-2 [&>button]:whitespace-nowrap">
             <button
               onClick={() => navigateToSection('analytics')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-semibold transition-all ${
@@ -574,8 +589,26 @@ export const AdminPortal: React.FC = () => {
           </nav>
         </div>
 
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 lg:grid-cols-1 gap-2 text-xs">
+            <button
+              onClick={onOpenApp}
+              className="flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl font-semibold bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 transition-colors"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>Aplikasi Kelas</span>
+            </button>
+            <button
+              onClick={() => signOut()}
+              className="flex items-center justify-center lg:justify-start gap-2 px-3.5 py-2.5 rounded-xl font-bold bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Keluar</span>
+            </button>
+          </div>
+
         {/* Database Quick Info Footer */}
-        <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200/70 text-[11px] text-slate-600 space-y-1">
+        <div className="hidden lg:block p-3 rounded-2xl bg-slate-100 border border-slate-200/70 text-[11px] text-slate-600 space-y-1">
           <div className="flex items-center justify-between font-semibold">
             <span className="text-slate-700">Basis Data:</span>
             <span className="font-mono text-amber-700">
@@ -585,6 +618,7 @@ export const AdminPortal: React.FC = () => {
           <p className="text-[10px] text-slate-500">
             Auth Firebase SSO terisolasi aman.
           </p>
+        </div>
         </div>
       </aside>
 
