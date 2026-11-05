@@ -3,6 +3,7 @@ import { Calendar, Lock, CheckCircle2, AlertCircle, Layers, WifiOff } from 'luci
 import { useAuth } from '../context/AuthContext';
 import { useClassData } from '../context/ClassDataContext';
 import { ASSET_IMAGES } from '../lib/seedData';
+import { AdminEmailLogin } from './AdminEmailLogin';
 
 export const LoginPage: React.FC = () => {
   const { signInWithGoogle, authError, clearAuthError, isOnline } = useAuth();
@@ -169,6 +170,18 @@ export const LoginPage: React.FC = () => {
                   )}
                   <span>{loadingGoogle ? 'Menghubungkan...' : 'Masuk dengan Google'}</span>
                 </button>
+
+                <div className="relative py-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span className="px-3 bg-white text-slate-400 font-bold uppercase tracking-wider text-[10px]">atau</span>
+                  </div>
+                </div>
+
+                {/* Email & password, admin accounts only */}
+                <AdminEmailLogin />
               </div>
 
               {/* Security info footer */}

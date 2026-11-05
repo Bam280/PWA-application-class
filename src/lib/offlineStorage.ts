@@ -126,12 +126,7 @@ export const offlineStorage = {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          // Filter out dummy items
-          const cleaned = parsed.filter(item => !item.id.startsWith('mhs-'));
-          if (cleaned.length !== parsed.length) {
-            this.saveClassMembers(cleaned);
-          }
-          return cleaned;
+          return parsed;
         }
       }
     } catch (e) {

@@ -52,6 +52,7 @@ import { generateSchedulesICS, downloadICSFile } from '../lib/calendarSync';
 import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
+import { MembersErrorBanner } from './MembersErrorBanner';
 
 interface AdminPortalProps {
   onOpenApp: () => void;
@@ -380,13 +381,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     setConnectionResult(result);
   };
 
-  const handleAddMemberSubmit = (e: React.FormEvent) => {
+  const handleAddMemberSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMemberName.trim() || !newMemberEmail.trim()) return;
 
-    addMember({
+    const saved = await addMember({
       name: newMemberName,
-      nim: newMemberNim || '23010920' + Math.floor(10 + Math.random() * 89),
+      nim: newMemberNim.trim(),
       email: newMemberEmail,
       avatarUrl:
         newMemberRole === 'super_admin'
@@ -398,6 +399,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       lastActive: 'Baru ditambahkan',
       role: newMemberRole,
     });
+    // Keep the form open (with its input) if the API rejected the new member.
+    if (!saved) return;
 
     setNewMemberName('');
     setNewMemberNim('');
@@ -1356,6 +1359,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
         {/* SECTION 5: ROSTER MAHASISWA */}
         {activeSection === 'roster' && (
           <div className="space-y-6 animate-in fade-in duration-200">
+            <MembersErrorBanner />
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Daftar Anggota & Mahasiswa Kelas</h3>
@@ -1464,6 +1468,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
             {/* SUBTAB 1: KELOLA ROLE KELAS (SUPER ADMIN ONLY) */}
             {settingsTab === 'roles' && (
               <div className="space-y-6">
+                <MembersErrorBanner />
                 {/* Header Explainer Card */}
                 <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">

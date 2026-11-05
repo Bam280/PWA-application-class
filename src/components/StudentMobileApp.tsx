@@ -56,6 +56,7 @@ import {
 import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
+import { MembersErrorBanner } from './MembersErrorBanner';
 
 interface StudentMobileAppProps {
   /** Present only for admins: switches to the full admin portal. */
@@ -321,13 +322,13 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     setShowMobileAddSchedModal(false);
   };
 
-  const handleMobileAddMember = (e: React.FormEvent) => {
+  const handleMobileAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMemberName.trim() || !newMemberEmail.trim()) return;
 
-    addMember({
+    const saved = await addMember({
       name: newMemberName,
-      nim: newMemberNim || '23010920' + Math.floor(10 + Math.random() * 89),
+      nim: newMemberNim.trim(),
       email: newMemberEmail,
       avatarUrl:
         newMemberRole === 'super_admin'
@@ -339,6 +340,8 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
       lastActive: 'Baru ditambahkan',
       role: newMemberRole,
     });
+    // Keep the form open (with its input) if the API rejected the new member.
+    if (!saved) return;
 
     setNewMemberName('');
     setNewMemberNim('');
@@ -1065,6 +1068,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
               {/* SUBTAB ROLES: SUPER ADMIN ONLY */}
               {isSuperAdmin && mobileSettingsSubTab === 'roles' && (
                 <div className="space-y-3">
+                  <MembersErrorBanner />
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="text-xs font-bold text-slate-900">Kelola Role Anggota Kelas</h4>
