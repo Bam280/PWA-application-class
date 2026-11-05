@@ -22,6 +22,7 @@ const DUMMY_MEMBER_IDS = new Set(['mhs-2', 'mhs-3', 'mhs-4', 'mhs-5', 'mhs-6']);
 export const offlineStorage = {
   purgeLegacyDummyData() {
     try {
+      if (typeof localStorage === 'undefined') return;
       const v = localStorage.getItem(STORAGE_KEYS.DATA_VERSION);
       if (v !== '2.0_no_dummy') {
         const scheds = this.getSchedules();
@@ -295,5 +296,7 @@ export const offlineStorage = {
   },
 };
 
-// Immediately run legacy dummy data purge
-offlineStorage.purgeLegacyDummyData();
+// Immediately run legacy dummy data purge if in browser
+if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+  offlineStorage.purgeLegacyDummyData();
+}

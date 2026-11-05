@@ -504,7 +504,10 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const syncToCustomApi = async (path: string, method: string, body?: unknown) => {
     if (dbConfig.provider !== 'custom_api' || !dbConfig.apiBaseUrl) return;
     try {
-      const url = `${dbConfig.apiBaseUrl.replace(/\/$/, '')}${path}`;
+      const cleanBase = dataService.normalizeUrl(dbConfig.apiBaseUrl);
+      if (!cleanBase) return;
+      const cleanPath = path.startsWith('/') ? path : `/${path}`;
+      const url = `${cleanBase}${cleanPath}`;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -513,13 +516,17 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (authHeader) {
         headers[dbConfig.authHeaderName || 'Authorization'] = authHeader;
       }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
       await fetch(url, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
     } catch (e) {
-      console.warn(`Custom API sync failed for ${path} (Firebase Auth remains completely unaffected):`, e);
+      console.warn(`Custom API sync notice for ${path} (Firebase Auth remains completely unaffected):`, e);
     }
   };
 

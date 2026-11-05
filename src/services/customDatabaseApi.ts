@@ -1,5 +1,13 @@
 import { ScheduleItem, Announcement, ReminderItem, ReadReceipt } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
+import {
+  normalizeApiUrl,
+  extractArrayPayload,
+  normalizeSchedule,
+  normalizeAnnouncement,
+  normalizeReminder,
+  dataService,
+} from '../lib/dataService';
 
 export interface DatabaseApiConfig {
   baseUrl: string;
@@ -11,7 +19,7 @@ export interface DatabaseApiConfig {
 const STORAGE_KEY_CONFIG = 'uniclass_custom_database_api_config';
 
 export const DEFAULT_DATABASE_API_CONFIG: DatabaseApiConfig = {
-  baseUrl: 'https://api.kampus-pribadi.ac.id/v1',
+  baseUrl: ((import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined)?.trim() || 'https://api.kampus-pribadi.ac.id/v1',
   apiKey: '',
   authHeaderName: 'Authorization',
   timeoutMs: 5000,
@@ -21,7 +29,8 @@ type TokenProvider = () => Promise<string | null>;
 
 /**
  * Client API Database Khusus yang MANDIRI (Decoupled dari Firebase).
- * Menangani seluruh query & mutasi data ke server / REST API database pribadi.
+ * Menangani seluruh query & mutasi data ke server / REST API database pribadi
+ * dengan penanganan format envelope ({ data: [...] }) dan casing yang tangguh.
  */
 class CustomDatabaseApiClient {
   private config: DatabaseApiConfig;
@@ -34,7 +43,14 @@ class CustomDatabaseApiClient {
   public loadConfig(): DatabaseApiConfig {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CONFIG);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_DATABASE_API_CONFIG,
+          ...parsed,
+          baseUrl: normalizeApiUrl(parsed.baseUrl || DEFAULT_DATABASE_API_CONFIG.baseUrl),
+        };
+      }
     } catch (e) {
       console.warn('Gagal membaca konfigurasi database API:', e);
     }
@@ -42,7 +58,10 @@ class CustomDatabaseApiClient {
   }
 
   public saveConfig(newConfig: DatabaseApiConfig) {
-    this.config = { ...newConfig };
+    this.config = {
+      ...newConfig,
+      baseUrl: normalizeApiUrl(newConfig.baseUrl),
+    };
     try {
       localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(this.config));
       window.dispatchEvent(new Event('custom-db-api-config-changed'));
@@ -70,7 +89,8 @@ class CustomDatabaseApiClient {
     };
 
     if (this.config.apiKey) {
-      headers[this.config.authHeaderName || 'Authorization'] = `Bearer ${this.config.apiKey}`;
+      const key = this.config.apiKey.startsWith('Bearer ') ? this.config.apiKey : `Bearer ${this.config.apiKey}`;
+      headers[this.config.authHeaderName || 'Authorization'] = key;
     } else if (this.tokenProvider) {
       try {
         const token = await this.tokenProvider();
@@ -86,8 +106,11 @@ class CustomDatabaseApiClient {
   }
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T | null> {
-    const baseUrl = this.config.baseUrl.replace(/\/$/, '');
-    const url = `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;
+    const cleanBaseUrl = normalizeApiUrl(this.config.baseUrl);
+    if (!cleanBaseUrl) return null;
+
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${cleanBaseUrl}${cleanPath}`;
     const headers = await this.buildHeaders();
 
     const controller = new AbortController();
@@ -122,10 +145,14 @@ class CustomDatabaseApiClient {
   // ================= JADWAL KULIAH (SCHEDULES) =================
   public schedules = {
     getAll: async (): Promise<ScheduleItem[]> => {
-      const remote = await this.request<ScheduleItem[]>('/schedules');
-      if (remote && Array.isArray(remote) && remote.length > 0) {
-        offlineStorage.saveSchedules(remote);
-        return remote;
+      const remote = await this.request<unknown>('/schedules');
+      if (remote) {
+        const arrayPayload = extractArrayPayload(remote, ['schedules']);
+        if (arrayPayload.length > 0) {
+          const normalized = arrayPayload.map((item, idx) => normalizeSchedule(item, idx));
+          offlineStorage.saveSchedules(normalized);
+          return normalized;
+        }
       }
       return offlineStorage.getSchedules();
     },
@@ -157,10 +184,14 @@ class CustomDatabaseApiClient {
   // ================= PENGUMUMAN (ANNOUNCEMENTS) =================
   public announcements = {
     getAll: async (): Promise<Announcement[]> => {
-      const remote = await this.request<Announcement[]>('/announcements');
-      if (remote && Array.isArray(remote) && remote.length > 0) {
-        offlineStorage.saveAnnouncements(remote);
-        return remote;
+      const remote = await this.request<unknown>('/announcements');
+      if (remote) {
+        const arrayPayload = extractArrayPayload(remote, ['announcements']);
+        if (arrayPayload.length > 0) {
+          const normalized = arrayPayload.map((item, idx) => normalizeAnnouncement(item, idx));
+          offlineStorage.saveAnnouncements(normalized);
+          return normalized;
+        }
       }
       return offlineStorage.getAnnouncements();
     },
@@ -192,10 +223,14 @@ class CustomDatabaseApiClient {
   // ================= PENGINGAT (REMINDERS) =================
   public reminders = {
     getAll: async (): Promise<ReminderItem[]> => {
-      const remote = await this.request<ReminderItem[]>('/reminders');
-      if (remote && Array.isArray(remote) && remote.length > 0) {
-        offlineStorage.saveReminders(remote);
-        return remote;
+      const remote = await this.request<unknown>('/reminders');
+      if (remote) {
+        const arrayPayload = extractArrayPayload(remote, ['reminders']);
+        if (arrayPayload.length > 0) {
+          const normalized = arrayPayload.map((item, idx) => normalizeReminder(item, idx));
+          offlineStorage.saveReminders(normalized);
+          return normalized;
+        }
       }
       return offlineStorage.getReminders();
     },
@@ -231,58 +266,7 @@ class CustomDatabaseApiClient {
     message: string;
   }> {
     const url = customUrl || this.config.baseUrl;
-    const start = performance.now();
-
-    try {
-      new URL(url);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-
-      const headers: Record<string, string> = { Accept: 'application/json' };
-      if (customKey) {
-        headers['Authorization'] = `Bearer ${customKey}`;
-      }
-
-      let response: Response;
-      try {
-        response = await fetch(`${url.replace(/\/$/, '')}/health`, {
-          method: 'GET',
-          headers,
-          signal: controller.signal,
-        });
-      } catch {
-        response = await fetch(url, {
-          method: 'GET',
-          headers,
-          signal: controller.signal,
-        });
-      }
-
-      clearTimeout(timeout);
-      const latencyMs = Math.round(performance.now() - start);
-
-      if (response.ok || response.status === 404 || response.status === 401) {
-        return {
-          success: true,
-          latencyMs,
-          message: `Koneksi berhasil terhubung (${latencyMs}ms, HTTP ${response.status}).`,
-        };
-      } else {
-        return {
-          success: false,
-          latencyMs,
-          message: `Server merespon dengan status error: ${response.status} ${response.statusText}`,
-        };
-      }
-    } catch (err) {
-      const latencyMs = Math.round(performance.now() - start);
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        latencyMs,
-        message: `Koneksi ke endpoint database khusus gagal (${errorMsg}). Pastikan backend aktif dan header CORS (Access-Control-Allow-Origin: *) diaktifkan.`,
-      };
-    }
+    return dataService.testConnection(url, customKey, 'custom_key', this.config.authHeaderName || 'Authorization');
   }
 }
 

@@ -374,7 +374,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
   const handleMobileTestDb = async () => {
     setMobTestLoading(true);
     setMobTestResult(null);
-    const res = await dataService.testConnection(mobApiUrl, mobApiKey, mobAuthMode);
+    const res = await dataService.testConnection(mobApiUrl, mobApiKey, mobAuthMode, 'Authorization');
     setMobTestLoading(false);
     setMobTestResult(res);
   };
@@ -1275,13 +1275,17 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                     <div>
                       <label className="block text-slate-700 font-semibold mb-1 text-[11px]">Base URL Server Pribadi</label>
                       <input
-                        type="url"
+                        type="text"
+                        inputMode="url"
                         required
                         value={mobApiUrl}
                         onChange={(e) => setMobApiUrl(e.target.value)}
-                        placeholder="https://api.kampus-pribadi.ac.id/v1"
+                        placeholder="Contoh: https://api.kampus-pribadi.ac.id/v1 atau http://localhost:8000/api"
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
                       />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Mendukung awalan <code className="text-amber-800">http://</code>, <code className="text-amber-800">https://</code>, IP lokal, dan pembungkus JSON <code className="text-amber-800">&#123; data: [...] &#125;</code>.
+                      </p>
                     </div>
 
                     <div>
@@ -1295,6 +1299,19 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                         <option value="custom_key">API Key Manual</option>
                       </select>
                     </div>
+
+                    {mobAuthMode === 'custom_key' && (
+                      <div>
+                        <label className="block text-slate-700 font-semibold mb-1 text-[11px]">API Key / Secret Token</label>
+                        <input
+                          type="password"
+                          value={mobApiKey}
+                          onChange={(e) => setMobApiKey(e.target.value)}
+                          placeholder="Masukkan API Key server pribadi Anda"
+                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono"
+                        />
+                      </div>
+                    )}
 
                     {mobTestResult && (
                       <div

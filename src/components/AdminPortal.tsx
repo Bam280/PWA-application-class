@@ -1850,7 +1850,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                         Base URL Server API Pribadi
                       </label>
                       <input
-                        type="url"
+                        type="text"
+                        inputMode="url"
                         required
                         placeholder="Contoh: https://api.kampus-pribadi.ac.id/v1 atau http://localhost:8000/api"
                         value={customApiUrl}
@@ -1858,7 +1859,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                         className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-hidden focus:border-amber-500 text-xs"
                       />
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Aplikasi akan memanggil rute <code className="text-amber-700 font-mono">/schedules</code>, <code className="text-amber-700 font-mono">/announcements</code>, dan <code className="text-amber-700 font-mono">/reminders</code> di endpoint ini.
+                        Aplikasi memanggil rute <code className="text-amber-700 font-mono">/schedules</code>, <code className="text-amber-700 font-mono">/announcements</code>, <code className="text-amber-700 font-mono">/reminders</code>, dan <code className="text-amber-700 font-mono">/users</code>. Mendukung respon array langsung maupun pembungkus envelope (<code className="text-amber-800 font-mono">&#123; data: [...] &#125;</code>) dan penamaan kolom snake_case/camelCase otomatis.
                       </p>
                     </div>
 
