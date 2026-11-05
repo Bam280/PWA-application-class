@@ -46,7 +46,9 @@ interface ClassDataContextType {
 const ClassDataContext = createContext<ClassDataContextType | undefined>(undefined);
 
 export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isOnline } = useAuth();
+  const { user, firebaseUser, isOnline } = useAuth();
+  // Firestore rules require request.auth; listeners must wait for (and follow) the Firebase session.
+  const authUid = firebaseUser?.uid ?? null;
   const [dbConfig, setDbConfig] = useState<CustomDatabaseConfig>(() => dataService.getConfig());
   const [schedules, setSchedules] = useState<ScheduleItem[]>(() => offlineStorage.getSchedules());
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStorage.getAnnouncements());
@@ -92,6 +94,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       })();
     }
+
+    // Without a Firebase session every Firestore read is denied; keep the local cache until sign-in.
+    if (!authUid) return;
 
     // Schedules listener (for Firestore active provider or backup sync)
     const schedUnsub = onSnapshot(
@@ -152,7 +157,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       annUnsub();
       remUnsub();
     };
-  }, [isOnline, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
+  }, [authUid, isOnline, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
   const addAnnouncement = async (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => {
     const newId = `ann-${Date.now()}`;

@@ -1,21 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 import { auth, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { ASSET_IMAGES } from '../lib/seedData';
 
 interface AuthContextType {
+  /** Profile derived from the active Firebase Auth session; null when signed out. */
   user: UserProfile | null;
   firebaseUser: User | null;
   role: UserRole;
+  /** True until Firebase Auth has restored (or ruled out) a persisted session. */
   loading: boolean;
+  /** Last sign-in error, already translated to a user-facing message. */
+  authError: string | null;
+  clearAuthError: () => void;
   signInWithGoogle: () => Promise<void>;
-  signInAsDemo: (role: UserRole) => void;
   signOut: () => Promise<void>;
-  switchRole: (role: UserRole) => void;
   isOnline: boolean;
-  toggleSimulatedOffline: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,11 +49,71 @@ function resolveRoleForEmail(email: string): UserRole {
   return 'class_member';
 }
 
+function buildProfile(fbUser: User): UserProfile {
+  const email = fbUser.email || '';
+  const role = resolveRoleForEmail(email);
+  const rosterEntry = offlineStorage
+    .getClassMembers()
+    .find(m => m.email.toLowerCase() === email.toLowerCase());
+
+  const fallbackAvatar =
+    role === 'super_admin'
+      ? ASSET_IMAGES.superAdminAvatar
+      : role === 'class_admin'
+      ? ASSET_IMAGES.classAdminAvatar
+      : ASSET_IMAGES.classMemberAvatar;
+
+  return {
+    id: fbUser.uid,
+    email,
+    displayName: fbUser.displayName || rosterEntry?.name || email.split('@')[0] || 'Pengguna UniClass',
+    role,
+    nim: rosterEntry?.nim || '',
+    major: 'ODP IT Batch 2026 · Kelas A',
+    avatarUrl: fbUser.photoURL || fallbackAvatar,
+    createdAt: fbUser.metadata.creationTime
+      ? new Date(fbUser.metadata.creationTime).toISOString()
+      : new Date().toISOString(),
+  };
+}
+
+/** Maps Firebase Auth error codes to messages for the login screen. Returns null for user-initiated cancels. */
+function describeAuthError(err: unknown): string | null {
+  const code = err instanceof FirebaseError ? err.code : '';
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+    case 'auth/user-cancelled':
+      return null;
+    case 'auth/popup-blocked':
+      return 'Jendela login diblokir oleh browser. Izinkan pop-up untuk situs ini, lalu tekan tombol masuk lagi.';
+    case 'auth/unauthorized-domain':
+      return `Domain ${window.location.hostname} belum diizinkan di Firebase Authentication. Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`;
+    case 'auth/operation-not-allowed':
+      return 'Login Google belum diaktifkan di Firebase Authentication (Sign-in method → Google).';
+    case 'auth/network-request-failed':
+      return 'Tidak dapat terhubung ke Firebase. Periksa koneksi internet Anda lalu coba lagi.';
+    case 'auth/too-many-requests':
+      return 'Terlalu banyak percobaan masuk. Tunggu beberapa saat lalu coba lagi.';
+    case 'auth/user-disabled':
+      return 'Akun ini telah dinonaktifkan. Hubungi administrator.';
+    case 'auth/internal-error':
+    default:
+      return 'Gagal masuk dengan Google. Silakan coba lagi.';
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
-  const [user, setUser] = useState<UserProfile | null>(() => offlineStorage.getUserProfile());
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [isOnline, setIsOnline] = useState<boolean>(() => offlineStorage.isAppOnline());
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() => {
+    // The simulated-offline toggle was a development control; never let a stale flag
+    // keep a production session stuck offline.
+    if (offlineStorage.getSimulatedOffline()) offlineStorage.setSimulatedOffline(false);
+    return offlineStorage.isAppOnline();
+  });
 
   // Listen to network status changes
   useEffect(() => {
@@ -69,139 +132,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Listen to Firebase Auth state
+  // Firebase Auth is the single source of truth for the session. Its own persistence
+  // (IndexedDB) restores the session on reload, including while offline.
   useEffect(() => {
+    // Drop the legacy localStorage profile, which let sessions outlive Firebase sign-out.
+    offlineStorage.saveUserProfile(null);
+
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       setFirebaseUser(fbUser);
-      if (fbUser) {
-        const assignedRole = resolveRoleForEmail(fbUser.email || '');
-        const userProfile: UserProfile = {
-          id: fbUser.uid,
-          email: fbUser.email || 'user@univ.ac.id',
-          displayName: fbUser.displayName || 'Pengguna UniClass',
-          role: assignedRole,
-          nim: assignedRole === 'super_admin' ? 'Dosen-TI-01' : '2301092001',
-          major: 'Teknik Informatika (S-1)',
-          avatarUrl: fbUser.photoURL || (
-            assignedRole === 'super_admin'
-              ? ASSET_IMAGES.superAdminAvatar
-              : assignedRole === 'class_admin'
-              ? ASSET_IMAGES.classAdminAvatar
-              : ASSET_IMAGES.classMemberAvatar
-          ),
-          createdAt: new Date().toISOString(),
-        };
-        setUser(userProfile);
-        offlineStorage.saveUserProfile(userProfile);
-      } else {
-        // Only restore if user has an explicit active session saved
-        const cached = offlineStorage.getUserProfile();
-        setUser(cached);
-      }
+      setUser(fbUser ? buildProfile(fbUser) : null);
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Never leave the user on the loading screen if Firebase Auth is slow to initialise;
+    // a session that restores later still updates state through the listener above.
+    const loadingTimeout = window.setTimeout(() => setLoading(false), 8000);
+
+    return () => {
+      unsubscribe();
+      window.clearTimeout(loadingTimeout);
+    };
   }, []);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = useCallback(async () => {
+    setAuthError(null);
     try {
-      setLoading(true);
-      const res = await signInWithPopup(auth, googleProvider);
-      const assignedRole = resolveRoleForEmail(res.user.email || '');
-      const userProfile: UserProfile = {
-        id: res.user.uid,
-        email: res.user.email || '',
-        displayName: res.user.displayName || 'Pengguna Google',
-        role: assignedRole,
-        nim: assignedRole === 'super_admin' ? 'Dosen-TI-01' : '2301092001',
-        major: 'Teknik Informatika (S-1)',
-        avatarUrl: res.user.photoURL || ASSET_IMAGES.superAdminAvatar,
-        createdAt: new Date().toISOString(),
-      };
-      setUser(userProfile);
-      offlineStorage.saveUserProfile(userProfile);
+      // Popup (not redirect) is used because authDomain is on firebaseapp.com: the redirect flow
+      // breaks under third-party storage partitioning in Safari and recent Chrome.
+      // onAuthStateChanged picks up the new session and builds the profile.
+      await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      console.warn('Google Sign-In Popup notice (fallback active):', err);
-    } finally {
-      setLoading(false);
+      console.error('Google sign-in failed:', err);
+      const msg = describeAuthError(err);
+      if (msg) setAuthError(msg);
     }
-  };
+  }, []);
 
-  const signInAsDemo = (targetRole: UserRole) => {
-    let profile: UserProfile;
-
-    if (targetRole === 'super_admin') {
-      profile = {
-        id: 'super-admin-1',
-        email: 'julionedna23@gmail.com',
-        displayName: 'Dian Pratama, M.Kom. (Head of IT Learning)',
-        role: 'super_admin',
-        nim: 'NIP: BNI-CORPU-019',
-        major: 'IT Learning & Corporate University BNI',
-        avatarUrl: ASSET_IMAGES.superAdminAvatar,
-        createdAt: new Date().toISOString(),
-      };
-    } else if (targetRole === 'class_admin') {
-      profile = {
-        id: 'class-admin-1',
-        email: 'faiz.ramadhan@univ.ac.id',
-        displayName: 'Ahmad Faiz Ramadhan (Ketua Angkatan ODP IT)',
-        role: 'class_admin',
-        nim: 'NIP: ODP-IT-2026-002',
-        major: 'ODP IT Batch 2026 · Kelas A',
-        avatarUrl: ASSET_IMAGES.classAdminAvatar,
-        createdAt: new Date().toISOString(),
-      };
-    } else {
-      profile = {
-        id: 'class-member-1',
-        email: 'lukigio23@gmail.com',
-        displayName: 'Luki Giovani (Trainee ODP IT)',
-        role: 'class_member',
-        nim: 'NIP: ODP-IT-2026-001',
-        major: 'ODP IT Batch 2026 · Kelas A',
-        avatarUrl: ASSET_IMAGES.classMemberAvatar,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    setUser(profile);
-    offlineStorage.saveUserProfile(profile);
-  };
-
-  const switchRole = (newRole: UserRole) => {
-    signInAsDemo(newRole);
-  };
-
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       await fbSignOut(auth);
     } catch (err) {
-      console.warn('Firebase signout note:', err);
+      console.error('Firebase sign-out failed:', err);
+      // Clear local state anyway so the user is never stuck in a half-signed-in UI.
+      setFirebaseUser(null);
+      setUser(null);
     }
-    setUser(null);
-    offlineStorage.saveUserProfile(null);
-  };
+  }, []);
 
-  const toggleSimulatedOffline = () => {
-    const current = offlineStorage.getSimulatedOffline();
-    offlineStorage.setSimulatedOffline(!current);
-  };
+  const clearAuthError = useCallback(() => setAuthError(null), []);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         firebaseUser,
-        role: user?.role || 'super_admin',
+        role: user?.role || 'class_member',
         loading,
+        authError,
+        clearAuthError,
         signInWithGoogle,
-        signInAsDemo,
         signOut,
-        switchRole,
         isOnline,
-        toggleSimulatedOffline,
       }}
     >
       {children}

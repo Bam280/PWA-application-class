@@ -30,6 +30,8 @@ import {
   Send,
   Pencil,
   Trash2,
+  LogOut,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClassData } from '../context/ClassDataContext';
@@ -37,7 +39,6 @@ import {
   ScheduleItem,
   Announcement,
   ReminderItem,
-  DeviceViewMode,
   StudentMember,
   UserRole,
   ROLE_DEFINITIONS,
@@ -57,13 +58,16 @@ import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataSe
 import { CalendarScheduleView } from './CalendarScheduleView';
 
 interface StudentMobileAppProps {
-  viewMode?: DeviceViewMode;
+  /** Present only for admins: switches to the full admin portal. */
+  onOpenPortal?: () => void;
+  onOpenNotifications: () => void;
+  unreadCount: number;
 }
 
 type MobileTab = 'home' | 'schedule' | 'announcements' | 'reminders' | 'settings' | 'profile';
 
-export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) => {
-  const { user, role, isOnline } = useAuth();
+export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal, onOpenNotifications, unreadCount }) => {
+  const { user, role, isOnline, signOut } = useAuth();
   const {
     schedules,
     announcements,
@@ -366,7 +370,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col bg-white sm:border sm:border-slate-200/80 sm:rounded-3xl sm:shadow-sm overflow-hidden min-h-[calc(100vh-5rem)] relative">
+    <div className="w-full max-w-5xl mx-auto flex flex-col bg-white sm:border sm:border-slate-200/80 sm:rounded-3xl sm:shadow-sm overflow-hidden h-dvh sm:h-[calc(100dvh-2rem)] lg:h-[calc(100dvh-3rem)] relative">
       {/* Offline Warning Banner */}
       {!isOnline && (
         <div className="bg-amber-500 text-slate-950 px-5 py-2 text-xs flex items-center justify-between shrink-0 shadow-xs font-semibold">
@@ -379,25 +383,53 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
       )}
 
       {/* Top App Bar */}
-        <div className="px-5 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
+        <div className="px-4 sm:px-5 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-3 border-b border-slate-200 bg-white/95 backdrop-blur-md flex items-center justify-between gap-2 shrink-0 z-10">
           <div className="flex items-center gap-2.5">
             <div className="px-1.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold text-[11px] shadow-xs tracking-wider">
               BNI
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h1 className="text-xs font-bold text-slate-900 tracking-tight">ODP IT BNI 2026</h1>
+                <h1 className="text-xs font-bold text-slate-900 tracking-tight whitespace-nowrap">ODP IT BNI 2026</h1>
                 {isAdmin && (
                   <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-100 text-amber-950 rounded">
                     {isSuperAdmin ? 'Super' : 'Admin'}
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-slate-500">Kelas A · BNI Corporate University</p>
+              <p className="text-[10px] text-slate-500 truncate">
+                Kelas A<span className="hidden sm:inline"> · BNI Corporate University</span>
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Admin portal shortcut (admins only) */}
+            {onOpenPortal && (
+              <button
+                onClick={onOpenPortal}
+                className="p-1.5 sm:px-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors"
+                title="Buka Portal Admin"
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Portal Admin</span>
+              </button>
+            )}
+
+            <button
+              onClick={onOpenNotifications}
+              className="relative p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors"
+              title="Notifikasi"
+              aria-label="Buka notifikasi"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-[10px] font-bold text-slate-950 flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
             {/* Quick Settings Shortcut for Admins */}
             {isAdmin && (
               <button
@@ -415,7 +447,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
 
             <button
               onClick={handleDownloadAllICS}
-              className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1 transition-colors"
+              className="hidden sm:flex p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 items-center gap-1 transition-colors"
               title="Ekspor seluruh jadwal ke file kalender .ics"
             >
               <Download className="w-3.5 h-3.5" />
@@ -435,7 +467,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
         </div>
 
         {/* Scrollable Content Viewport with Fluid Directional Slide-in */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 pb-20">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-3 pb-24">
           <AnimatePresence mode="wait" custom={tabDirection}>
             <motion.div
               key={activeTab}
@@ -1288,6 +1320,14 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
                       Uji Notif
                     </button>
                   </div>
+
+                  <button
+                    onClick={() => signOut()}
+                    className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Keluar ({user?.email})
+                  </button>
                 </div>
               )}
             </div>
@@ -1324,6 +1364,14 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
                 <Download className="w-4 h-4" />
                 Unduh Semua Kalender (.ICS)
               </button>
+
+              <button
+                onClick={() => signOut()}
+                className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Keluar
+              </button>
             </div>
           )}
             </motion.div>
@@ -1331,7 +1379,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
         </div>
 
         {/* BOTTOM ERGONOMIC TAB BAR */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-2 flex items-center justify-around z-20 shadow-xs">
+        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-center justify-around z-20 shadow-xs">
           <button
             onClick={() => navigateToTab('home')}
             className={`flex flex-col items-center justify-center min-w-[54px] min-h-[44px] transition-colors relative ${
