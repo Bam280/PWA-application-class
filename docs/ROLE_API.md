@@ -155,6 +155,19 @@ Lalu jalankan ulang `npm run dev`. Untuk build produksi, set variabel yang sama 
 Alamat ini sengaja **tidak** bisa diubah dari halaman Pengaturan, supaya tidak ada yang bisa mengarahkan
 aplikasi ke API palsu yang membalas `super_admin`.
 
+Aturan nilai `VITE_ROLE_API_URL`:
+
+- **URL lengkap server API**, diawali `https://` — contoh `https://api.domain-anda.com/api`.
+  Tanpa garis miring di akhir; aplikasi menambahkan `/me`, `/users`, dst.
+- **Bukan** alamat aplikasi ini (mis. `https://odp-apps-class.ai.studio/...`) dan **bukan** API key/token.
+  Nilai seperti itu membuat aplikasi memanggil dirinya sendiri dan mendapat halaman HTML
+  ("Respons API role bukan JSON … Permintaan terkirim ke aplikasi ini sendiri").
+- Jika aplikasi dibuka lewat `https://`, API juga harus `https://` (browser memblokir `http://`).
+- Untuk aplikasi yang sudah di-deploy (mis. di AI Studio), API harus bisa diakses dari internet.
+  API yang hanya berjalan di komputer lokal (Laragon, `localhost`) tidak bisa dijangkau oleh pengguna lain.
+- Nilai `VITE_*` ikut tertanam di JavaScript yang dikirim ke browser, jadi jangan pernah menaruh
+  rahasia (API key, password) di variabel ini.
+
 ## 7. Login email & password (khusus admin)
 
 Halaman login punya tombol **Masuk dengan Email (Admin)**. Role tetap diambil dari `GET /me`; jika yang
