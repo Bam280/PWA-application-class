@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, ShieldCheck, GraduationCap, Building2, Sparkles, UserCheck } from 'lucide-react';
+import { X, ShieldCheck, GraduationCap, Crown, UserCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { ROLE_DEFINITIONS } from '../types';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,58 +14,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+          className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="text-center mb-6 pt-2">
-          <div className="inline-flex p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20 mb-3">
+          <div className="inline-flex p-3 bg-amber-100 text-amber-800 rounded-2xl border border-amber-300 mb-3 shadow-xs">
             <GraduationCap className="w-7 h-7" />
           </div>
-          <h2 className="text-lg font-bold text-slate-100">Portal SSO UniClass Hub</h2>
-          <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+          <h2 className="text-lg font-bold text-slate-900">Portal SSO UniClass Hub</h2>
+          <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
             Sistem Masuk Tunggal (SSO) Terintegrasi Akun Google Kampus & Firebase Auth
           </p>
         </div>
 
         {user ? (
-          <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl p-4 mb-6">
+          <div className="bg-amber-50/60 border border-amber-200 rounded-2xl p-4 mb-6">
             <div className="flex items-center gap-3">
               <img
-                src={user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                src={user.avatarUrl}
                 alt={user.displayName}
-                className="w-12 h-12 rounded-xl object-cover border border-slate-700"
+                className="w-12 h-12 rounded-xl object-cover border border-amber-300 shadow-xs"
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-sm text-slate-200 truncate">{user.displayName}</h3>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${
-                    role === 'admin' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                  }`}>
-                    {role === 'admin' ? 'Dosen / Admin' : 'Mahasiswa'}
+                  <h3 className="font-bold text-sm text-slate-900 truncate">{user.displayName}</h3>
+                </div>
+                <div className="mt-0.5">
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                      role === 'super_admin'
+                        ? 'bg-amber-200 text-amber-950 border-amber-300'
+                        : role === 'class_admin'
+                        ? 'bg-yellow-100 text-yellow-950 border-yellow-300'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {ROLE_DEFINITIONS[role]?.label || role}
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
-                {user.nim && <p className="text-[11px] text-slate-500 font-mono mt-0.5">NIM: {user.nim}</p>}
+                <p className="text-xs text-slate-500 truncate mt-1">{user.email}</p>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between">
-              <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-medium">
+            <div className="mt-4 pt-3 border-t border-amber-200 flex items-center justify-between">
+              <span className="text-xs text-emerald-700 flex items-center gap-1.5 font-bold">
                 <ShieldCheck className="w-4 h-4" />
-                Sesi SSO Aktif
+                Sesi SSO Aktif (Firebase Auth)
               </span>
               <button
                 onClick={async () => {
                   await signOut();
                   onClose();
                 }}
-                className="text-xs text-rose-400 hover:text-rose-300 hover:underline font-medium"
+                className="text-xs text-rose-600 hover:text-rose-700 font-bold hover:underline"
               >
                 Keluar (Sign Out)
               </button>
@@ -79,7 +87,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               await signInWithGoogle();
               onClose();
             }}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-slate-100 text-slate-900 rounded-xl font-semibold text-sm transition-all shadow-md active:scale-[0.98]"
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-sm transition-all shadow-xs active:scale-[0.98]"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -104,47 +112,72 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-800"></div>
+              <div className="w-full border-t border-slate-200"></div>
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="px-2 bg-slate-900 text-slate-500 font-medium">Atau Akses Cepat Peran</span>
+              <span className="px-3 bg-white text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                Uji Peran Sistem (Demo Personas)
+              </span>
             </div>
           </div>
 
-          {/* Quick SSO Role Switches */}
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* Quick SSO 3-Role Demo Buttons */}
+          <div className="grid grid-cols-1 gap-2">
             <button
               onClick={() => {
-                signInAsDemo('student');
+                signInAsDemo('super_admin');
                 onClose();
               }}
-              className="p-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-left transition-all group"
+              className="p-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-left transition-all flex items-center justify-between"
             >
-              <div className="flex items-center gap-2 mb-1">
-                <UserCheck className="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-semibold text-slate-200">Mahasiswa</span>
+              <div className="flex items-center gap-2.5">
+                <Crown className="w-4 h-4 text-amber-700" />
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">Super Admin</span>
+                  <p className="text-[10px] text-slate-500">Dian Pratama (Full manage menu setting & role)</p>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-400 truncate">Luki Giovani (S-1 TI)</p>
+              <span className="text-[10px] font-bold text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded">Pilih</span>
             </button>
 
             <button
               onClick={() => {
-                signInAsDemo('admin');
+                signInAsDemo('class_admin');
                 onClose();
               }}
-              className="p-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl text-left transition-all group"
+              className="p-3 bg-yellow-50 hover:bg-yellow-100 border border-yellow-200 rounded-xl text-left transition-all flex items-center justify-between"
             >
-              <div className="flex items-center gap-2 mb-1">
-                <Building2 className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-semibold text-slate-200">Dosen / Admin</span>
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-yellow-700" />
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">Admin Kelas (Ketua Kelas)</span>
+                  <p className="text-[10px] text-slate-500">Ahmad Faiz Ramadhan (Kirim & edit jadwal, berita)</p>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-400 truncate">LukiGio23@gmail.com</p>
+              <span className="text-[10px] font-bold text-yellow-900 bg-yellow-200/70 px-2 py-0.5 rounded">Pilih</span>
+            </button>
+
+            <button
+              onClick={() => {
+                signInAsDemo('class_member');
+                onClose();
+              }}
+              className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition-all flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2.5">
+                <UserCheck className="w-4 h-4 text-slate-600" />
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">Member Kelas (Mahasiswa)</span>
+                  <p className="text-[10px] text-slate-500">Luki Giovani (Hanya membaca jadwal, berita, & tugas)</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-slate-700 bg-slate-200 px-2 py-0.5 rounded">Pilih</span>
             </button>
           </div>
         </div>
 
         <p className="text-[11px] text-slate-500 text-center mt-5 leading-normal">
-          Peran Admin mengizinkan publikasi berita, pengingat, dan pemantauan analitik pembacaan mahasiswa.
+          Autentikasi Firebase Auth terisolasi penuh dari basis data / REST API pribadi.
         </p>
       </div>
     </div>

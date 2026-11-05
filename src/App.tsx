@@ -12,8 +12,10 @@ import { testFirebaseConnection } from './lib/firebase';
 
 const MainApp: React.FC = () => {
   const { role } = useAuth();
-  // Default to iOS mobile view for students, or Web Portal for admin
-  const [viewMode, setViewMode] = useState<DeviceViewMode>('mobile-ios');
+  // Default to Web Portal for super_admin and class_admin, or iOS mobile view for class_member
+  const [viewMode, setViewMode] = useState<DeviceViewMode>(() =>
+    role === 'class_member' ? 'mobile-ios' : 'portal-web'
+  );
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<InAppNotification[]>(() =>
@@ -22,12 +24,12 @@ const MainApp: React.FC = () => {
 
   // Sync role changes to sensible default view
   useEffect(() => {
-    if (role === 'admin' && viewMode !== 'portal-web') {
-      setViewMode('portal-web');
-    } else if (role === 'student' && viewMode === 'portal-web') {
+    if ((role === 'super_admin' || role === 'class_admin') && viewMode === 'mobile-ios') {
+      // Keep user's chosen view unless switching from student
+    } else if (role === 'class_member' && viewMode === 'portal-web') {
       setViewMode('mobile-ios');
     }
-  }, [role]);
+  }, [role, viewMode]);
 
   // Subscribe to real-time notification engine
   useEffect(() => {
@@ -40,7 +42,7 @@ const MainApp: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col">
       {/* Top Device & Role Navigation Bar */}
       <TopDeviceBar
         viewMode={viewMode}

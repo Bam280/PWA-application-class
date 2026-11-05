@@ -30,7 +30,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'lukigio23@gmail.com') ||
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'lukigio23@gmail.com' ||
+          request.auth.token.email.lower() == 'julionedna23@gmail.com' ||
+          request.auth.token.email.lower().matches('.*@univ\\.ac\\.id$')
+        )) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -40,7 +44,7 @@ service cloud.firestore {
       return data.keys().hasAll(['email', 'displayName', 'role']) &&
              data.email is string && data.email.size() <= 128 &&
              data.displayName is string && data.displayName.size() <= 100 &&
-             data.role in ['student', 'admin'];
+             data.role in ['super_admin', 'class_admin', 'class_member', 'admin', 'student'];
     }
 
     function isValidSchedule(data) {

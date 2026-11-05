@@ -12,7 +12,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
   if (!isOpen) return null;
 
   const handleTestPush = async () => {
-    const perm = await notificationService.requestPushPermission();
+    await notificationService.requestPushPermission();
     notificationService.dispatchNotification(
       'Uji Coba Push Notifikasi',
       'Sistem notifikasi real-time UniClass Hub aktif dan tersinkronisasi!',
@@ -23,59 +23,59 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
   const getTypeIcon = (type: InAppNotification['type']) => {
     switch (type) {
       case 'urgent':
-        return <ShieldAlert className="w-4 h-4 text-rose-500" />;
+        return <ShieldAlert className="w-4 h-4 text-rose-600" />;
       case 'important':
-        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+        return <AlertTriangle className="w-4 h-4 text-amber-600" />;
       case 'reminder':
-        return <Clock className="w-4 h-4 text-indigo-500" />;
+        return <Clock className="w-4 h-4 text-amber-600" />;
       default:
-        return <Info className="w-4 h-4 text-blue-500" />;
+        return <Info className="w-4 h-4 text-slate-600" />;
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90 sticky top-0">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg">
+            <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
               <Bell className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-semibold text-slate-100 text-sm">Pusat Notifikasi</h3>
-              <p className="text-xs text-slate-400">Pemberitahuan & Pengingat Real-Time</p>
+              <h3 className="font-bold text-slate-900 text-sm">Pusat Notifikasi</h3>
+              <p className="text-xs text-slate-500">Pemberitahuan & Pengingat Real-Time</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Action bar */}
-        <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800/80 flex items-center justify-between text-xs">
+        <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs">
           <button
             onClick={() => notificationService.markAllAsRead()}
-            className="text-slate-400 hover:text-indigo-400 flex items-center gap-1.5 font-medium transition-colors"
+            className="text-slate-600 hover:text-amber-700 flex items-center gap-1.5 font-bold transition-colors"
           >
             <Check className="w-3.5 h-3.5" />
             Tandai semua dibaca
           </button>
           <button
             onClick={handleTestPush}
-            className="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 font-medium rounded-md border border-indigo-500/30 transition-colors"
+            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shadow-2xs text-xs"
           >
             Uji Push Notif
           </button>
         </div>
 
         {/* List */}
-        <div className="p-4 overflow-y-auto space-y-2.5 divide-y divide-slate-800/40">
+        <div className="p-4 overflow-y-auto space-y-2.5 divide-y divide-slate-100">
           {notifications.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-sm">
+            <div className="py-12 text-center text-slate-400 text-sm">
               Belum ada notifikasi baru
             </div>
           ) : (
@@ -83,20 +83,20 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
               <div
                 key={item.id}
                 onClick={() => notificationService.markAsRead(item.id)}
-                className={`pt-2.5 first:pt-0 p-2.5 rounded-xl transition-all cursor-pointer ${
-                  item.read ? 'bg-slate-900/40 opacity-70' : 'bg-slate-800/40 hover:bg-slate-800/70 border border-slate-800'
+                className={`pt-2.5 first:pt-0 p-3 rounded-2xl transition-all cursor-pointer ${
+                  item.read ? 'bg-slate-50/70 opacity-70' : 'bg-amber-50/50 hover:bg-amber-50 border border-amber-200/80 shadow-2xs'
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 p-1.5 rounded-lg bg-slate-800/80 border border-slate-700/50">
+                  <div className="mt-0.5 p-1.5 rounded-lg bg-white border border-slate-200">
                     {getTypeIcon(item.type)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-semibold text-slate-200 truncate">{item.title}</h4>
-                      <span className="text-[10px] text-slate-500 whitespace-nowrap">{item.timestamp}</span>
+                      <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
+                      <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{item.timestamp}</span>
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">{item.body}</p>
+                    <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{item.body}</p>
                   </div>
                 </div>
               </div>

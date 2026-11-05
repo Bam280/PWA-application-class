@@ -1,5 +1,5 @@
-import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, UserProfile } from '../types';
-import { INITIAL_SCHEDULES, INITIAL_ANNOUNCEMENTS, INITIAL_REMINDERS } from './seedData';
+import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, UserProfile, StudentMember, UserRole } from '../types';
+import { INITIAL_SCHEDULES, INITIAL_ANNOUNCEMENTS, INITIAL_REMINDERS, CLASS_STUDENTS } from './seedData';
 
 const STORAGE_KEYS = {
   SCHEDULES: 'uniclass_schedules',
@@ -8,7 +8,7 @@ const STORAGE_KEYS = {
   READ_RECEIPTS: 'uniclass_read_receipts',
   USER_PROFILE: 'uniclass_user_profile',
   SIMULATED_OFFLINE: 'uniclass_simulated_offline',
-  PENDING_SYNC: 'uniclass_pending_sync_queue',
+  CLASS_MEMBERS: 'uniclass_class_members',
 };
 
 export const offlineStorage = {
@@ -91,6 +91,33 @@ export const offlineStorage = {
     } catch (e) {
       console.warn('Error saving read receipt', e);
     }
+  },
+
+  getClassMembers(): StudentMember[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.CLASS_MEMBERS);
+      if (data) return JSON.parse(data);
+    } catch (e) {
+      console.warn('Error reading class members', e);
+    }
+    this.saveClassMembers(CLASS_STUDENTS);
+    return CLASS_STUDENTS;
+  },
+
+  saveClassMembers(members: StudentMember[]) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLASS_MEMBERS, JSON.stringify(members));
+      window.dispatchEvent(new Event('class-members-changed'));
+    } catch (e) {
+      console.warn('Error saving class members', e);
+    }
+  },
+
+  updateMemberRole(memberId: string, newRole: UserRole): StudentMember[] {
+    const members = this.getClassMembers();
+    const updated = members.map(m => (m.id === memberId ? { ...m, role: newRole } : m));
+    this.saveClassMembers(updated);
+    return updated;
   },
 
   getUserProfile(): UserProfile | null {

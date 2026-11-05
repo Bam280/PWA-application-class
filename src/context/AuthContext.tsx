@@ -3,6 +3,7 @@ import { User, signInWithPopup, signOut as fbSignOut, onAuthStateChanged } from 
 import { auth, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
+import { ASSET_IMAGES } from '../lib/seedData';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -19,7 +20,31 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAILS = ['lukigio23@gmail.com', 'admin@univ.ac.id', 'dosen@univ.ac.id'];
+const SUPER_ADMIN_EMAILS = [
+  'julionedna23@gmail.com',
+  'lukigio23@gmail.com',
+  'superadmin@univ.ac.id',
+  'dosen@univ.ac.id',
+];
+
+const CLASS_ADMIN_EMAILS = [
+  'faiz.ramadhan@univ.ac.id',
+  'ketuakelas@univ.ac.id',
+  'admin@univ.ac.id',
+];
+
+function resolveRoleForEmail(email: string): UserRole {
+  const emailLower = email.toLowerCase();
+  if (SUPER_ADMIN_EMAILS.includes(emailLower)) return 'super_admin';
+  if (CLASS_ADMIN_EMAILS.includes(emailLower)) return 'class_admin';
+
+  // Check saved roster
+  const members = offlineStorage.getClassMembers();
+  const matched = members.find(m => m.email.toLowerCase() === emailLower);
+  if (matched?.role) return matched.role;
+
+  return 'class_member';
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -49,37 +74,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
-        const emailLower = (fbUser.email || '').toLowerCase();
-        const isAdmin = ADMIN_EMAILS.includes(emailLower);
+        const assignedRole = resolveRoleForEmail(fbUser.email || '');
         const userProfile: UserProfile = {
           id: fbUser.uid,
           email: fbUser.email || 'user@univ.ac.id',
-          displayName: fbUser.displayName || 'Mahasiswa Terdaftar',
-          role: isAdmin ? 'admin' : 'student',
-          nim: isAdmin ? undefined : '2301092001',
+          displayName: fbUser.displayName || 'Pengguna UniClass',
+          role: assignedRole,
+          nim: assignedRole === 'super_admin' ? 'Dosen-TI-01' : '2301092001',
           major: 'Teknik Informatika (S-1)',
-          avatarUrl: fbUser.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          avatarUrl: fbUser.photoURL || (
+            assignedRole === 'super_admin'
+              ? ASSET_IMAGES.superAdminAvatar
+              : assignedRole === 'class_admin'
+              ? ASSET_IMAGES.classAdminAvatar
+              : ASSET_IMAGES.classMemberAvatar
+          ),
           createdAt: new Date().toISOString(),
         };
         setUser(userProfile);
         offlineStorage.saveUserProfile(userProfile);
       } else {
-        // If no firebase user, fallback to cached offline profile or default student profile
+        // Fallback to cached profile or default Super Admin profile for seamless preview
         const cached = offlineStorage.getUserProfile();
         if (!cached) {
-          // Default profile so user is not stuck on blank screen
-          const defaultStudent: UserProfile = {
-            id: 'mhs-1',
-            email: 'LukiGio23@gmail.com',
-            displayName: 'Luki Giovani',
-            role: 'student',
-            nim: '2301092001',
-            major: 'Teknik Informatika (S-1)',
-            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          const defaultAdmin: UserProfile = {
+            id: 'super-admin-1',
+            email: 'julionedna23@gmail.com',
+            displayName: 'Dian Pratama, M.Kom. (Super Admin)',
+            role: 'super_admin',
+            nim: 'Dosen-TI-01',
+            major: 'Koordinator Mata Kuliah & Prodi TI',
+            avatarUrl: ASSET_IMAGES.superAdminAvatar,
             createdAt: new Date().toISOString(),
           };
-          setUser(defaultStudent);
-          offlineStorage.saveUserProfile(defaultStudent);
+          setUser(defaultAdmin);
+          offlineStorage.saveUserProfile(defaultAdmin);
         }
       }
       setLoading(false);
@@ -92,72 +121,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       const res = await signInWithPopup(auth, googleProvider);
-      const emailLower = (res.user.email || '').toLowerCase();
-      const isAdmin = ADMIN_EMAILS.includes(emailLower);
+      const assignedRole = resolveRoleForEmail(res.user.email || '');
       const userProfile: UserProfile = {
         id: res.user.uid,
         email: res.user.email || '',
         displayName: res.user.displayName || 'Pengguna Google',
-        role: isAdmin ? 'admin' : 'student',
-        nim: isAdmin ? undefined : '2301092001',
+        role: assignedRole,
+        nim: assignedRole === 'super_admin' ? 'Dosen-TI-01' : '2301092001',
         major: 'Teknik Informatika (S-1)',
-        avatarUrl: res.user.photoURL || undefined,
+        avatarUrl: res.user.photoURL || ASSET_IMAGES.superAdminAvatar,
         createdAt: new Date().toISOString(),
       };
       setUser(userProfile);
       offlineStorage.saveUserProfile(userProfile);
     } catch (err) {
-      console.warn('Google Sign-In Popup error, keeping demo session:', err);
+      console.warn('Google Sign-In Popup notice (fallback active):', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const signInAsDemo = (role: UserRole) => {
-    const profile: UserProfile = role === 'admin'
-      ? {
-          id: 'admin-1',
-          email: 'LukiGio23@gmail.com',
-          displayName: 'Dian Pratama, M.Kom. (Dosen & Admin)',
-          role: 'admin',
-          major: 'Koordinator Mata Kuliah & Prodi TI',
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          createdAt: new Date().toISOString(),
-        }
-      : {
-          id: 'mhs-1',
-          email: 'LukiGio23@gmail.com',
-          displayName: 'Luki Giovani',
-          role: 'student',
-          nim: '2301092001',
-          major: 'Teknik Informatika (S-1)',
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          createdAt: new Date().toISOString(),
-        };
+  const signInAsDemo = (targetRole: UserRole) => {
+    let profile: UserProfile;
+
+    if (targetRole === 'super_admin') {
+      profile = {
+        id: 'super-admin-1',
+        email: 'julionedna23@gmail.com',
+        displayName: 'Dian Pratama, M.Kom. (Head of IT Learning)',
+        role: 'super_admin',
+        nim: 'NIP: BNI-CORPU-019',
+        major: 'IT Learning & Corporate University BNI',
+        avatarUrl: ASSET_IMAGES.superAdminAvatar,
+        createdAt: new Date().toISOString(),
+      };
+    } else if (targetRole === 'class_admin') {
+      profile = {
+        id: 'class-admin-1',
+        email: 'faiz.ramadhan@univ.ac.id',
+        displayName: 'Ahmad Faiz Ramadhan (Ketua Angkatan ODP IT)',
+        role: 'class_admin',
+        nim: 'NIP: ODP-IT-2026-002',
+        major: 'ODP IT Batch 2026 · Kelas A',
+        avatarUrl: ASSET_IMAGES.classAdminAvatar,
+        createdAt: new Date().toISOString(),
+      };
+    } else {
+      profile = {
+        id: 'class-member-1',
+        email: 'lukigio23@gmail.com',
+        displayName: 'Luki Giovani (Trainee ODP IT)',
+        role: 'class_member',
+        nim: 'NIP: ODP-IT-2026-001',
+        major: 'ODP IT Batch 2026 · Kelas A',
+        avatarUrl: ASSET_IMAGES.classMemberAvatar,
+        createdAt: new Date().toISOString(),
+      };
+    }
 
     setUser(profile);
     offlineStorage.saveUserProfile(profile);
   };
 
   const switchRole = (newRole: UserRole) => {
-    if (!user) {
-      signInAsDemo(newRole);
-      return;
-    }
-    const updated: UserProfile = {
-      ...user,
-      role: newRole,
-      displayName: newRole === 'admin' ? 'Dian Pratama, M.Kom. (Admin Kelas)' : 'Luki Giovani (Mahasiswa)',
-    };
-    setUser(updated);
-    offlineStorage.saveUserProfile(updated);
+    signInAsDemo(newRole);
   };
 
   const signOut = async () => {
     try {
       await fbSignOut(auth);
     } catch (err) {
-      console.warn('Firebase signout error:', err);
+      console.warn('Firebase signout note:', err);
     }
     setUser(null);
     offlineStorage.saveUserProfile(null);
@@ -173,7 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         firebaseUser,
-        role: user?.role || 'student',
+        role: user?.role || 'super_admin',
         loading,
         signInWithGoogle,
         signInAsDemo,

@@ -11,7 +11,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ScheduleItem, Announcement, ReminderItem, ReadReceipt } from '../types';
+import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { notificationService } from '../lib/notifications';
 import { useAuth } from './AuthContext';
@@ -23,9 +23,13 @@ interface ClassDataContextType {
   announcements: Announcement[];
   reminders: ReminderItem[];
   readReceipts: ReadReceipt[];
+  classMembers: StudentMember[];
   loading: boolean;
   dbConfig: CustomDatabaseConfig;
   updateDbConfig: (cfg: CustomDatabaseConfig) => void;
+  updateMemberRole: (memberId: string, role: UserRole) => void;
+  addMember: (member: Omit<StudentMember, 'id'>) => void;
+  deleteMember: (memberId: string) => void;
   addAnnouncement: (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => Promise<void>;
   deleteAnnouncement: (id: string) => Promise<void>;
   markAnnouncementAsRead: (announcementId: string) => Promise<void>;
@@ -48,6 +52,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStorage.getAnnouncements());
   const [reminders, setReminders] = useState<ReminderItem[]>(() => offlineStorage.getReminders());
   const [readReceipts, setReadReceipts] = useState<ReadReceipt[]>(() => offlineStorage.getReadReceipts());
+  const [classMembers, setClassMembers] = useState<StudentMember[]>(() => offlineStorage.getClassMembers());
   const [loading, setLoading] = useState(false);
 
   // Firestore listeners when online
@@ -61,11 +66,38 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    // Schedules listener
+    // If provider is custom_api, attempt to fetch latest records from the personal backend
+    if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
+      (async () => {
+        try {
+          const [customScheds, customAnns, customRems] = await Promise.all([
+            dataService.fetchFromCustomApi<ScheduleItem[]>('/schedules', dbConfig),
+            dataService.fetchFromCustomApi<Announcement[]>('/announcements', dbConfig),
+            dataService.fetchFromCustomApi<ReminderItem[]>('/reminders', dbConfig),
+          ]);
+          if (customScheds && Array.isArray(customScheds) && customScheds.length > 0) {
+            setSchedules(customScheds);
+            offlineStorage.saveSchedules(customScheds);
+          }
+          if (customAnns && Array.isArray(customAnns) && customAnns.length > 0) {
+            setAnnouncements(customAnns);
+            offlineStorage.saveAnnouncements(customAnns);
+          }
+          if (customRems && Array.isArray(customRems) && customRems.length > 0) {
+            setReminders(customRems);
+            offlineStorage.saveReminders(customRems);
+          }
+        } catch (e) {
+          console.warn('Personal API data load error, gracefully falling back to local/cloud cache:', e);
+        }
+      })();
+    }
+
+    // Schedules listener (for Firestore active provider or backup sync)
     const schedUnsub = onSnapshot(
       collection(db, 'schedules'),
       (snapshot) => {
-        if (!snapshot.empty) {
+        if (!snapshot.empty && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
           const items: ScheduleItem[] = snapshot.docs.map(d => ({
             ...(d.data() as Omit<ScheduleItem, 'id'>),
             id: d.id,
@@ -75,7 +107,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       },
       (error) => {
-        console.warn('Firestore schedules snapshot error (falling back to local cache):', error.message);
+        console.warn('Firestore schedules snapshot notice:', error.message);
       }
     );
 
@@ -83,7 +115,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const annUnsub = onSnapshot(
       query(collection(db, 'announcements'), orderBy('publishedAt', 'desc')),
       (snapshot) => {
-        if (!snapshot.empty) {
+        if (!snapshot.empty && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
           const items: Announcement[] = snapshot.docs.map(d => ({
             ...(d.data() as Omit<Announcement, 'id'>),
             id: d.id,
@@ -93,7 +125,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       },
       (error) => {
-        console.warn('Firestore announcements snapshot error (falling back to local cache):', error.message);
+        console.warn('Firestore announcements snapshot notice:', error.message);
       }
     );
 
@@ -101,7 +133,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const remUnsub = onSnapshot(
       collection(db, 'reminders'),
       (snapshot) => {
-        if (!snapshot.empty) {
+        if (!snapshot.empty && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
           const items: ReminderItem[] = snapshot.docs.map(d => ({
             ...(d.data() as Omit<ReminderItem, 'id'>),
             id: d.id,
@@ -111,7 +143,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
       },
       (error) => {
-        console.warn('Firestore reminders snapshot error (falling back to local cache):', error.message);
+        console.warn('Firestore reminders snapshot notice:', error.message);
       }
     );
 
@@ -120,7 +152,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       annUnsub();
       remUnsub();
     };
-  }, [isOnline]);
+  }, [isOnline, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
   const addAnnouncement = async (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => {
     const newId = `ann-${Date.now()}`;
@@ -403,8 +435,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       };
-      if (dbConfig.apiKey) {
-        headers[dbConfig.authHeaderName || 'Authorization'] = `Bearer ${dbConfig.apiKey}`;
+      const authHeader = await dataService.getAuthHeaderValue(dbConfig);
+      if (authHeader) {
+        headers[dbConfig.authHeaderName || 'Authorization'] = authHeader;
       }
       await fetch(url, {
         method,
@@ -412,8 +445,39 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch (e) {
-      console.warn(`Custom API sync failed for ${path}:`, e);
+      console.warn(`Custom API sync failed for ${path} (Firebase Auth remains completely unaffected):`, e);
     }
+  };
+
+  const updateMemberRole = (memberId: string, newRole: UserRole) => {
+    const updated = offlineStorage.updateMemberRole(memberId, newRole);
+    setClassMembers([...updated]);
+    notificationService.dispatchNotification(
+      'Role Anggota Diperbarui',
+      `Perubahan role berhasil disimpan ke basis data kelas.`,
+      'normal'
+    );
+  };
+
+  const addMember = (memberData: Omit<StudentMember, 'id'>) => {
+    const newMember: StudentMember = {
+      ...memberData,
+      id: `mhs-${Date.now()}`,
+    };
+    const updated = [...classMembers, newMember];
+    setClassMembers(updated);
+    offlineStorage.saveClassMembers(updated);
+    notificationService.dispatchNotification(
+      'Anggota Baru Terdaftar',
+      `${newMember.name} ditambahkan dengan peran ${newMember.role}.`,
+      'normal'
+    );
+  };
+
+  const deleteMember = (memberId: string) => {
+    const updated = classMembers.filter(m => m.id !== memberId);
+    setClassMembers(updated);
+    offlineStorage.saveClassMembers(updated);
   };
 
   return (
@@ -423,9 +487,13 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         announcements,
         reminders,
         readReceipts,
+        classMembers,
         loading,
         dbConfig,
         updateDbConfig,
+        updateMemberRole,
+        addMember,
+        deleteMember,
         addAnnouncement,
         deleteAnnouncement,
         markAnnouncementAsRead,

@@ -7,7 +7,7 @@
       "properties": {
         "email": { "type": "string", "maxLength": 128 },
         "displayName": { "type": "string", "maxLength": 100 },
-        "role": { "type": "string", "enum": ["student", "admin"] },
+        "role": { "type": "string", "enum": ["super_admin", "class_admin", "class_member", "admin", "student"] },
         "nim": { "type": "string", "maxLength": 30 },
         "major": { "type": "string", "maxLength": 100 },
         "avatarUrl": { "type": "string", "maxLength": 300 },

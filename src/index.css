@@ -13,7 +13,7 @@
   }
 }
 
-/* Custom scrollbars for high density dashboard */
+/* Custom scrollbars with warm yellow/amber touch */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -24,10 +24,16 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(217, 119, 6, 0.25);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
+  background: rgba(217, 119, 6, 0.5);
+}
+
+/* Yellow accent selection */
+::selection {
+  background-color: #f59e0b;
+  color: #0f172a;
 }
