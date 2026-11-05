@@ -98,6 +98,39 @@ function parseUser(raw: unknown): RoleApiUser {
   };
 }
 
+/** Explains a non-JSON reply: status, content type, final URL, a likely cause and the start of the body. */
+function describeNonJsonResponse(res: Response, text: string, requestedUrl: string): string {
+  const contentType = res.headers.get('content-type') || 'tidak ada';
+  const head = text.slice(0, 4000);
+  const lower = head.toLowerCase();
+  const snippet = head
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+
+  let hint: string;
+  if (/^(<br\s*\/?>\s*)?(<b>)?\s*(warning|notice|deprecated|fatal error|parse error)\b/i.test(head)) {
+    hint =
+      'Ada pesan warning/error PHP yang tercetak sebelum JSON. Matikan display_errors di server (php.ini) atau perbaiki penyebab warning tersebut.';
+  } else if (lower.includes('ngrok')) {
+    hint =
+      'Ini halaman peringatan ngrok. Kirim header "ngrok-skip-browser-warning" dari server/proxy, atau gunakan domain tanpa halaman peringatan.';
+  } else if (res.redirected) {
+    hint = `Permintaan dialihkan (redirect) ke ${res.url}. Kemungkinan endpoint meminta login web atau alamat API salah.`;
+  } else if (lower.includes('<html') || lower.includes('<!doctype')) {
+    hint =
+      'Server mengembalikan halaman HTML, bukan API. Periksa VITE_ROLE_API_URL (mis. kurang awalan /api, atau mengarah ke aplikasi web/frontend).';
+  } else {
+    hint = 'Pastikan endpoint mengembalikan JSON dengan header Content-Type: application/json.';
+  }
+
+  return `Respons API role bukan JSON (HTTP ${res.status}, Content-Type: ${contentType}, URL: ${res.url || requestedUrl}). ${hint}${
+    snippet ? ` Awal respons: "${snippet}"` : ''
+  }`;
+}
+
 async function request(method: string, path: string, body?: unknown, token?: string): Promise<unknown> {
   if (!isRoleApiConfigured) {
     throw new RoleApiError(
@@ -138,12 +171,17 @@ async function request(method: string, path: string, body?: unknown, token?: str
   if (res.status === 204) return null;
 
   let data: unknown = null;
-  const text = await res.text();
+  // Byte-order marks (e.g. from PHP files saved "UTF-8 with BOM") would break JSON.parse.
+  const text = (await res.text()).replace(/^[﻿\s]+/, '');
   if (text) {
     try {
       data = JSON.parse(text);
     } catch {
-      if (res.ok) throw new RoleApiError('invalid_response', 'Respons API role bukan JSON.', res.status);
+      // Not our API answering (wrong URL, HTML page, PHP warning...). Never read its status as
+      // "not registered"; report what actually came back so the cause is visible on screen.
+      const message = describeNonJsonResponse(res, text, `${BASE_URL}${path}`);
+      console.error('[roleApi]', message);
+      throw new RoleApiError('invalid_response', message, res.status);
     }
   }
 
@@ -179,7 +217,8 @@ export const roleApi = {
     try {
       return parseUser(unwrap(await request('GET', '/me', undefined, idToken)));
     } catch (err) {
-      if (err instanceof RoleApiError && (err.status === 403 || err.status === 404)) {
+      // Only a JSON 403/404 from the API itself means "not registered" (an HTML 404 means a wrong URL).
+      if (err instanceof RoleApiError && (err.kind === 'forbidden' || err.kind === 'not_found')) {
         throw new RoleApiError('not_registered', err.message, err.status, err.serverMessage);
       }
       throw err;
