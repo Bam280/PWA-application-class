@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { useClassData } from '../context/ClassDataContext';
+import { isRoleApiConfigured } from '../lib/roleApi';
 
 /** Shown on member-management screens when the roster could not be loaded from the role API. */
 export const MembersErrorBanner: React.FC = () => {
   const { membersError, reloadMembers } = useClassData();
   const [retrying, setRetrying] = useState(false);
 
-  if (!membersError) return null;
+  if (!membersError || !isRoleApiConfigured) return null;
 
   return (
     <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">

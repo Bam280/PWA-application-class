@@ -19,12 +19,12 @@ export interface CustomDatabaseConfig {
 const STORAGE_KEY_DB_CONFIG = 'uniclass_custom_db_config';
 
 export const DEFAULT_DB_CONFIG: CustomDatabaseConfig = {
-  provider: 'firestore',
-  apiBaseUrl: 'https://api.kampus-pribadi.ac.id/v1',
+  provider: 'custom_api',
+  apiBaseUrl: ((import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined)?.trim() || '',
   apiKey: '',
   authHeaderMode: 'firebase_jwt',
   authHeaderName: 'Authorization',
-  syncWithFirestoreBackup: true,
+  syncWithFirestoreBackup: false,
 };
 
 export const dataService = {
@@ -36,6 +36,7 @@ export const dataService = {
         return {
           ...DEFAULT_DB_CONFIG,
           ...parsed,
+          provider: 'custom_api',
         };
       }
     } catch (e) {

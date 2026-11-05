@@ -17,7 +17,8 @@ import { notificationService } from '../lib/notifications';
 import { useAuth } from './AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { dataService, CustomDatabaseConfig } from '../lib/dataService';
-import { roleApi, toStudentMember, RoleApiError } from '../lib/roleApi';
+import { roleApi, toStudentMember, RoleApiError, isRoleApiConfigured } from '../lib/roleApi';
+import { ASSET_IMAGES } from '../lib/seedData';
 
 interface ClassDataContextType {
   schedules: ScheduleItem[];
@@ -72,28 +73,43 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setMembersError(null);
       return;
     }
-    if (!isOnline) {
-      setClassMembers(offlineStorage.getClassMembers());
-      return;
+    // If custom_api is configured with apiBaseUrl, fetch roster from the private API
+    if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
+      try {
+        const customMembers = await dataService.fetchFromCustomApi<StudentMember[]>('/users', dbConfig);
+        if (customMembers && Array.isArray(customMembers)) {
+          setClassMembers(customMembers);
+          setMembersError(null);
+          offlineStorage.saveClassMembers(customMembers);
+          return;
+        }
+      } catch (e) {
+        console.warn('Private API roster fetch notice:', e);
+      }
     }
-    try {
-      const members = (await roleApi.listUsers()).map(toStudentMember);
-      setClassMembers(members);
-      setMembersError(null);
-      offlineStorage.saveClassMembers(members);
-    } catch (err) {
-      console.warn('Role API roster load failed:', err);
-      setMembersError(err instanceof Error ? err.message : 'Gagal memuat daftar anggota.');
-      setClassMembers(offlineStorage.getClassMembers());
+    // If external role API is configured via env, query it
+    if (isRoleApiConfigured && isOnline) {
+      try {
+        const members = (await roleApi.listUsers()).map(toStudentMember);
+        setClassMembers(members);
+        setMembersError(null);
+        offlineStorage.saveClassMembers(members);
+        return;
+      } catch (err) {
+        console.warn('Role API roster load notice:', err);
+      }
     }
-  }, [isAdminUser, isOnline]);
+    // Otherwise fallback to clean local roster
+    setClassMembers(offlineStorage.getClassMembers());
+    setMembersError(null);
+  }, [isAdminUser, isOnline, dbConfig.provider, dbConfig.apiBaseUrl]);
 
   // Members only see their own data; admins load the roster for the signed-in account.
   useEffect(() => {
     reloadMembers();
   }, [reloadMembers, user?.id]);
 
-  // Firestore listeners when online
+  // Firestore & Custom API listeners when online
   useEffect(() => {
     if (!isOnline) {
       // Load offline cached data
@@ -104,29 +120,34 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
-    // If provider is custom_api, attempt to fetch latest records from the personal backend
+    // If provider is custom_api, fetch records from the personal backend API
     if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
       (async () => {
         try {
-          const [customScheds, customAnns, customRems] = await Promise.all([
+          const [customScheds, customAnns, customRems, customUsers] = await Promise.all([
             dataService.fetchFromCustomApi<ScheduleItem[]>('/schedules', dbConfig),
             dataService.fetchFromCustomApi<Announcement[]>('/announcements', dbConfig),
             dataService.fetchFromCustomApi<ReminderItem[]>('/reminders', dbConfig),
+            isAdminUser ? dataService.fetchFromCustomApi<StudentMember[]>('/users', dbConfig) : Promise.resolve(null),
           ]);
-          if (customScheds && Array.isArray(customScheds) && customScheds.length > 0) {
+          if (customScheds && Array.isArray(customScheds)) {
             setSchedules(customScheds);
             offlineStorage.saveSchedules(customScheds);
           }
-          if (customAnns && Array.isArray(customAnns) && customAnns.length > 0) {
+          if (customAnns && Array.isArray(customAnns)) {
             setAnnouncements(customAnns);
             offlineStorage.saveAnnouncements(customAnns);
           }
-          if (customRems && Array.isArray(customRems) && customRems.length > 0) {
+          if (customRems && Array.isArray(customRems)) {
             setReminders(customRems);
             offlineStorage.saveReminders(customRems);
           }
+          if (customUsers && Array.isArray(customUsers)) {
+            setClassMembers(customUsers);
+            offlineStorage.saveClassMembers(customUsers);
+          }
         } catch (e) {
-          console.warn('Personal API data load error, gracefully falling back to local/cloud cache:', e);
+          console.warn('Personal API data load notice:', e);
         }
       })();
     }
@@ -503,32 +524,76 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const target = classMembers.find(m => m.id === memberId);
     if (!target || target.role === newRole) return true;
 
-    // Optimistic update, rolled back if the API refuses.
+    // Optimistic update
     const previous = classMembers;
-    setClassMembers(classMembers.map(m => (m.id === memberId ? { ...m, role: newRole } : m)));
+    const next = classMembers.map(m => (m.id === memberId ? { ...m, role: newRole } : m));
+    setClassMembers(next);
+    offlineStorage.saveClassMembers(next);
+    syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'PATCH', { role: newRole });
+
+    // If external role API is not configured via env, local update + custom api sync is immediately authoritative
+    if (!isRoleApiConfigured) {
+      notificationService.dispatchNotification(
+        'Role Anggota Diperbarui',
+        `${target.name} sekarang ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
+        'normal'
+      );
+      if (user && target.email.toLowerCase() === user.email.toLowerCase()) {
+        await refreshAccess();
+      }
+      return true;
+    }
+
     try {
       const saved = await roleApi.updateUserRole(memberId, newRole);
       setClassMembers(curr => {
-        const next = curr.map(m => (m.id === memberId ? (saved ? toStudentMember(saved) : { ...m, role: newRole }) : m));
-        offlineStorage.saveClassMembers(next);
-        return next;
+        const nextList = curr.map(m => (m.id === memberId ? (saved ? toStudentMember(saved) : { ...m, role: newRole }) : m));
+        offlineStorage.saveClassMembers(nextList);
+        return nextList;
       });
       notificationService.dispatchNotification(
         'Role Anggota Diperbarui',
         `${target.name} sekarang ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
         'normal'
       );
-      // Changing one's own role takes effect immediately.
       if (user && target.email.toLowerCase() === user.email.toLowerCase()) await refreshAccess();
       return true;
     } catch (err) {
       setClassMembers(previous);
+      offlineStorage.saveClassMembers(previous);
       notificationService.dispatchNotification('Gagal Mengubah Role', describeRosterError(err), 'urgent');
       return false;
     }
   };
 
   const addMember = async (memberData: Omit<StudentMember, 'id'>): Promise<boolean> => {
+    // If external role API is not configured, create locally and sync to custom API
+    if (!isRoleApiConfigured) {
+      const newMember: StudentMember = {
+        ...memberData,
+        id: `mhs-${Date.now()}`,
+        avatarUrl: memberData.avatarUrl || (
+          memberData.role === 'super_admin'
+            ? ASSET_IMAGES.superAdminAvatar
+            : memberData.role === 'class_admin'
+            ? ASSET_IMAGES.classAdminAvatar
+            : ASSET_IMAGES.classMemberAvatar
+        ),
+        attendanceRate: memberData.attendanceRate ?? 100,
+        lastActive: 'Baru saja',
+      };
+      const next = [...classMembers, newMember];
+      setClassMembers(next);
+      offlineStorage.saveClassMembers(next);
+      syncToCustomApi('/users', 'POST', newMember);
+      notificationService.dispatchNotification(
+        'Anggota Baru Terdaftar',
+        `${newMember.name} ditambahkan sebagai ${ROLE_DEFINITIONS[newMember.role]?.label || newMember.role}.`,
+        'normal'
+      );
+      return true;
+    }
+
     try {
       const created = toStudentMember(
         await roleApi.createUser({
@@ -556,6 +621,14 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteMember = async (memberId: string): Promise<boolean> => {
+    syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'DELETE');
+    if (!isRoleApiConfigured) {
+      const next = classMembers.filter(m => m.id !== memberId);
+      setClassMembers(next);
+      offlineStorage.saveClassMembers(next);
+      return true;
+    }
+
     try {
       await roleApi.deleteUser(memberId);
       setClassMembers(curr => {

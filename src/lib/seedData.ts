@@ -7,13 +7,28 @@ export const ASSET_IMAGES = {
   campusHeroBanner: '/src/assets/images/campus_hero_banner_1793850439712.jpg',
 };
 
+// No dummy data: Real schedules will be fetched from the private API or added via Portal
 export const INITIAL_SCHEDULES: ScheduleItem[] = [];
 
+// No dummy data: Announcements will be loaded from the private API
 export const INITIAL_ANNOUNCEMENTS: Announcement[] = [];
 
+// No dummy data: Reminders will be loaded from the private API
 export const INITIAL_REMINDERS: ReminderItem[] = [];
 
-export const CLASS_STUDENTS: StudentMember[] = [];
+// Roster: Only the official Super Admin account; other members load from private API
+export const CLASS_STUDENTS: StudentMember[] = [
+  {
+    id: 'usr-admin-1',
+    name: 'Luki Giovani',
+    nim: 'NIP: BNI-CORPU-019',
+    email: 'LukiGio23@gmail.com',
+    avatarUrl: ASSET_IMAGES.superAdminAvatar,
+    attendanceRate: 100,
+    lastActive: 'Aktif',
+    role: 'super_admin',
+  },
+];
 
 export const DAYS_OF_WEEK = [
   { value: 1, label: 'Senin', short: 'Sen' },

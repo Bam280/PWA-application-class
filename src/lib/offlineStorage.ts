@@ -9,27 +9,56 @@ const STORAGE_KEYS = {
   USER_PROFILE: 'uniclass_user_profile',
   SIMULATED_OFFLINE: 'uniclass_simulated_offline',
   CLASS_MEMBERS: 'uniclass_class_members',
+  DATA_VERSION: 'uniclass_data_clean_version',
 };
 
+// IDs of previously seeded dummy items to ensure they are purged
+const DUMMY_SCHEDULE_IDS = new Set(['sch-1', 'sch-2', 'sch-3', 'sch-4', 'sch-5']);
+const DUMMY_ANNOUNCEMENT_IDS = new Set(['ann-1', 'ann-2', 'ann-3']);
+const DUMMY_REMINDER_IDS = new Set(['rem-1', 'rem-2', 'rem-3']);
+const DUMMY_MEMBER_IDS = new Set(['mhs-2', 'mhs-3', 'mhs-4', 'mhs-5', 'mhs-6']);
+
 export const offlineStorage = {
+  purgeLegacyDummyData() {
+    try {
+      const v = localStorage.getItem(STORAGE_KEYS.DATA_VERSION);
+      if (v !== '2.0_no_dummy') {
+        const scheds = this.getSchedules();
+        this.saveSchedules(scheds.filter(s => !DUMMY_SCHEDULE_IDS.has(s.id)));
+
+        const anns = this.getAnnouncements();
+        this.saveAnnouncements(anns.filter(a => !DUMMY_ANNOUNCEMENT_IDS.has(a.id)));
+
+        const rems = this.getReminders();
+        this.saveReminders(rems.filter(r => !DUMMY_REMINDER_IDS.has(r.id)));
+
+        const members = this.getClassMembers();
+        this.saveClassMembers(members.filter(m => !DUMMY_MEMBER_IDS.has(m.id)));
+
+        localStorage.setItem(STORAGE_KEYS.DATA_VERSION, '2.0_no_dummy');
+      }
+    } catch (e) {
+      console.warn('Error purging legacy dummy data:', e);
+    }
+  },
+
   getSchedules(): ScheduleItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          // Filter out dummy items
-          const cleaned = parsed.filter(item => !item.id.startsWith('sch-'));
-          if (cleaned.length !== parsed.length) {
-            this.saveSchedules(cleaned);
+          const clean = parsed.filter(s => !DUMMY_SCHEDULE_IDS.has(s.id));
+          if (clean.length !== parsed.length) {
+            this.saveSchedules(clean);
           }
-          return cleaned;
+          return clean;
         }
       }
     } catch (e) {
       console.warn('Error reading schedules from localStorage', e);
     }
-    return [];
+    return INITIAL_SCHEDULES;
   },
 
   saveSchedules(schedules: ScheduleItem[]) {
@@ -46,18 +75,17 @@ export const offlineStorage = {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          // Filter out dummy items
-          const cleaned = parsed.filter(item => !item.id.startsWith('ann-'));
-          if (cleaned.length !== parsed.length) {
-            this.saveAnnouncements(cleaned);
+          const clean = parsed.filter(a => !DUMMY_ANNOUNCEMENT_IDS.has(a.id));
+          if (clean.length !== parsed.length) {
+            this.saveAnnouncements(clean);
           }
-          return cleaned;
+          return clean;
         }
       }
     } catch (e) {
       console.warn('Error reading announcements from localStorage', e);
     }
-    return [];
+    return INITIAL_ANNOUNCEMENTS;
   },
 
   saveAnnouncements(announcements: Announcement[]) {
@@ -74,18 +102,17 @@ export const offlineStorage = {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          // Filter out dummy items
-          const cleaned = parsed.filter(item => !item.id.startsWith('rem-'));
-          if (cleaned.length !== parsed.length) {
-            this.saveReminders(cleaned);
+          const clean = parsed.filter(r => !DUMMY_REMINDER_IDS.has(r.id));
+          if (clean.length !== parsed.length) {
+            this.saveReminders(clean);
           }
-          return cleaned;
+          return clean;
         }
       }
     } catch (e) {
       console.warn('Error reading reminders from localStorage', e);
     }
-    return [];
+    return INITIAL_REMINDERS;
   },
 
   saveReminders(reminders: ReminderItem[]) {
@@ -126,13 +153,18 @@ export const offlineStorage = {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          return parsed;
+          const clean = parsed.filter(m => !DUMMY_MEMBER_IDS.has(m.id));
+          if (clean.length !== parsed.length) {
+            this.saveClassMembers(clean);
+          }
+          return clean;
         }
       }
     } catch (e) {
       console.warn('Error reading class members', e);
     }
-    return [];
+    this.saveClassMembers(CLASS_STUDENTS);
+    return CLASS_STUDENTS;
   },
 
   saveClassMembers(members: StudentMember[]) {
@@ -186,3 +218,6 @@ export const offlineStorage = {
     return typeof navigator !== 'undefined' ? navigator.onLine : true;
   },
 };
+
+// Immediately run legacy dummy data purge
+offlineStorage.purgeLegacyDummyData();

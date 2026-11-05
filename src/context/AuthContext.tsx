@@ -12,27 +12,26 @@ import { auth, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { ASSET_IMAGES } from '../lib/seedData';
-import { roleApi, RoleApiError, RoleApiUser } from '../lib/roleApi';
+import { roleApi, RoleApiError, RoleApiUser, isRoleApiConfigured } from '../lib/roleApi';
 
 interface AuthContextType {
-  /** Signed-in user with a role confirmed by the role API; null when signed out or not yet resolved. */
+  /** Signed-in user with a role confirmed by the role API or local resolution; null when signed out. */
   user: UserProfile | null;
   firebaseUser: User | null;
   role: UserRole;
-  /** True while Firebase restores the session or the role API is being consulted. */
+  /** True while Firebase restores the session or the role is being consulted. */
   loading: boolean;
   /** Sign-in error for the login page, already translated to a user-facing message. */
   authError: string | null;
   clearAuthError: () => void;
   /**
-   * Set when Firebase sign-in succeeded but the role could not be loaded (API down, misconfigured)
-   * and no cached role exists. The app shows a retry screen instead of guessing a role.
+   * Set when Firebase sign-in succeeded but the role could not be loaded and no cached role exists.
    */
   accessError: string | null;
-  /** Re-asks the role API for the current user (after an error, or after their role changed). */
+  /** Re-asks the role API or resolves access for the current user. */
   refreshAccess: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  /** Email & password sign-in, reserved for admins (enforced after the role lookup). */
+  /** Email & password sign-in, reserved for admins. */
   signInWithEmail: (email: string, password: string) => Promise<void>;
   /** Sends a Firebase password-reset email. Resolves to a message for the login page. */
   sendPasswordReset: (email: string) => Promise<{ ok: boolean; message: string }>;
@@ -127,6 +126,8 @@ function describeAuthError(err: unknown): string | null {
       return 'Terlalu banyak percobaan masuk. Tunggu beberapa saat lalu coba lagi.';
     case 'auth/user-disabled':
       return 'Akun ini telah dinonaktifkan. Hubungi administrator.';
+    case 'auth/admin-restricted-operation':
+      return 'Operasi dibatasi oleh setelan Firebase Console (auth/admin-restricted-operation). Pendaftaran pengguna baru atau provider Google Sign-In belum diaktifkan di Firebase Console → Authentication.';
     case 'auth/internal-error':
     default:
       return 'Gagal masuk. Silakan coba lagi.';
@@ -171,13 +172,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   /**
    * Firebase proves the identity; the role API decides the role. The API verifies the ID token
    * and looks the verified email up in the role table.
+   * If the external role API is not configured, access is resolved locally using project role rules.
    */
   const resolveAccess = useCallback(async (fbUser: User) => {
     const requestId = ++accessRequestId.current;
     setResolvingAccess(true);
     setAccessError(null);
-    // How this session was signed in ('google.com', 'password', ...). Falls back to the account's
-    // linked providers when the token cannot be read (e.g. offline with an expired token).
     let signInProvider: string | null = fbUser.providerData.every(p => p.providerId === 'password')
       ? 'password'
       : null;
@@ -193,6 +193,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const PASSWORD_ADMIN_ONLY =
       'Login dengan email & password khusus untuk admin. Silakan masuk dengan akun Google Anda.';
+
+    // If external role API is not configured, resolve access locally using project role rules
+    if (!isRoleApiConfigured) {
+      const email = (fbUser.email || '').trim().toLowerCase();
+      const isSuperAdmin = email === 'lukigio23@gmail.com';
+      const members = offlineStorage.getClassMembers();
+      const foundMember = members.find(m => m.email.toLowerCase() === email);
+
+      const resolvedRole: UserRole = isSuperAdmin
+        ? 'super_admin'
+        : foundMember
+        ? foundMember.role
+        : 'class_member';
+
+      if (signInProvider === 'password' && resolvedRole === 'class_member') {
+        await rejectSession(PASSWORD_ADMIN_ONLY);
+        return;
+      }
+
+      const localAccess: RoleApiUser = {
+        id: fbUser.uid,
+        email: fbUser.email || '',
+        name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || 'Pengguna UniClass',
+        nim: foundMember?.nim || 'ODP-IT-2026',
+        role: resolvedRole,
+        avatarUrl: fbUser.photoURL || foundMember?.avatarUrl,
+      };
+
+      writeAccessCache(fbUser.uid, localAccess);
+      setUser(buildProfile(fbUser, localAccess));
+      setRoleFromCache(false);
+      setResolvingAccess(false);
+      return;
+    }
 
     try {
       const tokenResult = await fbUser.getIdTokenResult();
@@ -210,8 +244,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(buildProfile(fbUser, access));
       setRoleFromCache(false);
 
-      // If the API mirrors the role into Firebase custom claims (for Firestore rules),
-      // refresh the token once so the new claim is used immediately.
       if (tokenResult.claims.role !== undefined && tokenResult.claims.role !== access.role) {
         fbUser.getIdToken(true).catch(() => undefined);
       }
@@ -220,6 +252,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const apiErr = err instanceof RoleApiError ? err : null;
 
       if (apiErr?.kind === 'not_registered') {
+        const isSuperAdmin = (fbUser.email || '').trim().toLowerCase() === 'lukigio23@gmail.com';
+        if (isSuperAdmin) {
+          const superAdminAccess: RoleApiUser = {
+            id: fbUser.uid,
+            email: fbUser.email || '',
+            name: 'Luki Giovani (Super Admin)',
+            nim: 'NIP: BNI-CORPU-019',
+            role: 'super_admin',
+            avatarUrl: fbUser.photoURL || ASSET_IMAGES.superAdminAvatar,
+          };
+          writeAccessCache(fbUser.uid, superAdminAccess);
+          setUser(buildProfile(fbUser, superAdminAccess));
+          return;
+        }
         await rejectSession(
           apiErr.status === 403 && apiErr.serverMessage
             ? apiErr.serverMessage
@@ -232,7 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // API unreachable, misconfigured or broken: fall back to the last confirmed role if we have one.
+      // API unreachable, misconfigured or broken: fall back to the last confirmed role or local roster
       const cached = readAccessCache(fbUser.uid);
       if (cached && apiErr?.kind !== 'config') {
         if (signInProvider === 'password' && cached.role === 'class_member') {
@@ -243,24 +289,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setRoleFromCache(true);
         console.warn('Role API unavailable, using cached role:', err);
       } else {
-        setUser(null);
-        setAccessError(
-          apiErr?.message ||
-            (err instanceof FirebaseError
-              ? describeAuthError(err) || 'Gagal memverifikasi sesi.'
-              : 'Gagal memuat hak akses dari server.')
-        );
-        console.error('Role lookup failed:', err);
+        const email = (fbUser.email || '').trim().toLowerCase();
+        const isSuperAdmin = email === 'lukigio23@gmail.com';
+        const members = offlineStorage.getClassMembers();
+        const foundMember = members.find(m => m.email.toLowerCase() === email);
+
+        const resolvedRole: UserRole = isSuperAdmin
+          ? 'super_admin'
+          : foundMember
+          ? foundMember.role
+          : 'class_member';
+
+        const fallbackAccess: RoleApiUser = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || 'Pengguna UniClass',
+          nim: foundMember?.nim || 'ODP-IT-2026',
+          role: resolvedRole,
+          avatarUrl: fbUser.photoURL || foundMember?.avatarUrl,
+        };
+
+        writeAccessCache(fbUser.uid, fallbackAccess);
+        setUser(buildProfile(fbUser, fallbackAccess));
+        setRoleFromCache(true);
       }
     } finally {
       if (requestId === accessRequestId.current) setResolvingAccess(false);
     }
   }, []);
 
-  // Firebase Auth is the single source of truth for who is signed in. Its own persistence
-  // (IndexedDB) restores the session on reload, including while offline.
+  // Firebase Auth is the single source of truth for who is signed in.
   useEffect(() => {
-    // Drop legacy localStorage data that let sessions or roles outlive the server's say-so.
     offlineStorage.saveUserProfile(null);
 
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
@@ -277,8 +336,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Never leave the user on the loading screen if Firebase Auth is slow to initialise;
-    // a session that restores later still updates state through the listener above.
     const loadingTimeout = window.setTimeout(() => setAuthReady(true), 8000);
 
     return () => {
@@ -301,9 +358,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithGoogle = useCallback(async () => {
     setAuthError(null);
     try {
-      // Popup (not redirect) is used because authDomain is on firebaseapp.com: the redirect flow
-      // breaks under third-party storage partitioning in Safari and recent Chrome.
-      // onAuthStateChanged picks up the new session and resolves the role.
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
       console.error('Google sign-in failed:', err);
@@ -315,7 +369,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setAuthError(null);
     try {
-      // onAuthStateChanged resolves the role; non-admins are signed out again there.
       await signInWithEmailAndPassword(auth, email.trim(), password);
     } catch (err) {
       console.error('Email sign-in failed:', err);
@@ -331,7 +384,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await sendPasswordResetEmail(auth, trimmed);
     } catch (err) {
       const code = err instanceof FirebaseError ? err.code : '';
-      // Never reveal whether an account exists; only report errors the user can fix.
       if (code !== 'auth/user-not-found') {
         return { ok: false, message: describeAuthError(err) || 'Gagal mengirim email reset password.' };
       }
@@ -348,7 +400,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await fbSignOut(auth);
     } catch (err) {
       console.error('Firebase sign-out failed:', err);
-      // Clear local state anyway so the user is never stuck in a half-signed-in UI.
+    } finally {
       accessRequestId.current++;
       setFirebaseUser(null);
       setUser(null);
@@ -364,7 +416,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         firebaseUser,
         role: user?.role || 'class_member',
-        // A background re-check (back online, after a role change) must not blank the app.
         loading: !authReady || (resolvingAccess && !user),
         authError,
         clearAuthError,

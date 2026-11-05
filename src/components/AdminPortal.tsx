@@ -1022,39 +1022,48 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-mono">
-                    {schedules.map((sch) => (
-                      <tr key={sch.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3 font-sans font-bold text-amber-800">
-                          {DAYS_OF_WEEK.find((d) => d.value === sch.dayOfWeek)?.label}
+                    {schedules.length === 0 ? (
+                      <tr>
+                        <td colSpan={canEditClassData ? 6 : 5} className="py-10 text-center font-sans text-slate-400">
+                          <p className="text-xs font-semibold text-slate-500">Belum ada jadwal perkuliahan tersimpan.</p>
+                          <p className="text-[11px] text-slate-400 mt-1">Gunakan formulir di atas untuk menambahkan jadwal atau sinkronkan dengan API pribadi Anda.</p>
                         </td>
-                        <td className="py-3 px-3">{sch.startTime} - {sch.endTime}</td>
-                        <td className="py-3 px-3 font-sans font-semibold text-slate-900">
-                          {sch.courseName} <span className="text-[10px] text-slate-400 font-mono">({sch.courseCode})</span>
-                        </td>
-                        <td className="py-3 px-3 font-sans text-slate-600">{sch.lecturer}</td>
-                        <td className="py-3 px-3 font-sans text-slate-700">{sch.room}</td>
-                        {canEditClassData && (
-                          <td className="py-3 px-3 text-center font-sans">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => openEditSchedule(sch)}
-                                className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
-                                title="Edit Jadwal Kuliah"
-                              >
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => deleteSchedule(sch.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                title="Hapus Jadwal"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        )}
                       </tr>
-                    ))}
+                    ) : (
+                      schedules.map((sch) => (
+                        <tr key={sch.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-3 font-sans font-bold text-amber-800">
+                            {DAYS_OF_WEEK.find((d) => d.value === sch.dayOfWeek)?.label}
+                          </td>
+                          <td className="py-3 px-3">{sch.startTime} - {sch.endTime}</td>
+                          <td className="py-3 px-3 font-sans font-semibold text-slate-900">
+                            {sch.courseName} <span className="text-[10px] text-slate-400 font-mono">({sch.courseCode})</span>
+                          </td>
+                          <td className="py-3 px-3 font-sans text-slate-600">{sch.lecturer}</td>
+                          <td className="py-3 px-3 font-sans text-slate-700">{sch.room}</td>
+                          {canEditClassData && (
+                            <td className="py-3 px-3 text-center font-sans">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => openEditSchedule(sch)}
+                                  className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                                  title="Edit Jadwal Kuliah"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => deleteSchedule(sch.id)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                  title="Hapus Jadwal"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1149,7 +1158,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
             {/* Announcements List */}
             <div className="space-y-3">
-              {announcements.map((ann) => (
+              {announcements.length === 0 ? (
+                <div className="p-8 text-center bg-white border border-slate-200 rounded-3xl shadow-xs">
+                  <p className="text-xs font-semibold text-slate-500">Belum ada pengumuman kelas yang diterbitkan.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Gunakan formulir di atas untuk menyiarkan pengumuman baru ke mahasiswa atau muat dari API Anda.</p>
+                </div>
+              ) : (
+                announcements.map((ann) => (
                 <div
                   key={ann.id}
                   className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
@@ -1194,7 +1209,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     )}
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </div>
         )}
@@ -1311,7 +1326,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
             {/* Reminders List */}
             <div className="space-y-3">
-              {reminders.map((rem) => (
+              {reminders.length === 0 ? (
+                <div className="p-8 text-center bg-white border border-slate-200 rounded-3xl shadow-xs">
+                  <p className="text-xs font-semibold text-slate-500">Belum ada pengingat tugas atau agenda aktif.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Gunakan tombol "Tambah Pengingat Baru" di atas untuk menambahkan tugas kelas.</p>
+                </div>
+              ) : (
+                reminders.map((rem) => (
                 <div
                   key={rem.id}
                   className="p-4 rounded-3xl bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-4"
@@ -1351,7 +1372,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     )}
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </div>
         )}
