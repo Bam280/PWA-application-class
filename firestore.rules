@@ -30,6 +30,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
+        // Role mirrored by the role API into Firebase custom claims (see docs/ROLE_API.md)
+        request.auth.token.get('role', '') in ['super_admin', 'class_admin'] ||
         (request.auth.token.email != null && (
           request.auth.token.email.lower() == 'lukigio23@gmail.com' ||
           request.auth.token.email.lower() == 'julionedna23@gmail.com' ||

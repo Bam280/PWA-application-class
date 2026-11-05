@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ShieldAlert, RefreshCw, LogOut } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ClassDataProvider } from './context/ClassDataContext';
 import { StudentMobileApp } from './components/StudentMobileApp';
@@ -11,8 +12,52 @@ import { useMediaQuery } from './lib/useMediaQuery';
 
 export type AppView = 'portal' | 'app';
 
+/** Signed in with Firebase, but the role API could not confirm a role (and nothing is cached). */
+const AccessErrorScreen: React.FC = () => {
+  const { firebaseUser, accessError, refreshAccess, signOut } = useAuth();
+  const [retrying, setRetrying] = useState(false);
+
+  return (
+    <div className="min-h-dvh bg-slate-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base font-extrabold text-slate-900">Hak akses belum dapat dimuat</h1>
+            <p className="text-xs text-slate-500 truncate">{firebaseUser?.email}</p>
+          </div>
+        </div>
+        <p className="text-sm text-slate-700 leading-relaxed">{accessError}</p>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <button
+            onClick={async () => {
+              setRetrying(true);
+              await refreshAccess();
+              setRetrying(false);
+            }}
+            disabled={retrying}
+            className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${retrying ? 'animate-spin' : ''}`} />
+            Coba lagi
+          </button>
+          <button
+            onClick={() => signOut()}
+            className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold"
+          >
+            <LogOut className="w-4 h-4" />
+            Keluar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MainApp: React.FC = () => {
-  const { user, firebaseUser, role, loading } = useAuth();
+  const { user, firebaseUser, role, loading, accessError } = useAuth();
   const isAdmin = role === 'super_admin' || role === 'class_admin';
   // Desktop-sized screens get the admin portal; phones and tablets get the class app.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -54,6 +99,11 @@ const MainApp: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // Signed in with Firebase but the role API could not be reached
+  if (!user && firebaseUser && accessError) {
+    return <AccessErrorScreen />;
   }
 
   // Access is gated by the login page connected to Firebase Auth

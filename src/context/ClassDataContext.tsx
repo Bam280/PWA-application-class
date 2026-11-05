@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   collection,
   onSnapshot,
@@ -11,12 +11,13 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole } from '../types';
+import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole, ROLE_DEFINITIONS } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { notificationService } from '../lib/notifications';
 import { useAuth } from './AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
 import { dataService, CustomDatabaseConfig } from '../lib/dataService';
+import { roleApi, toStudentMember, RoleApiError } from '../lib/roleApi';
 
 interface ClassDataContextType {
   schedules: ScheduleItem[];
@@ -27,9 +28,13 @@ interface ClassDataContextType {
   loading: boolean;
   dbConfig: CustomDatabaseConfig;
   updateDbConfig: (cfg: CustomDatabaseConfig) => void;
-  updateMemberRole: (memberId: string, role: UserRole) => void;
-  addMember: (member: Omit<StudentMember, 'id'>) => void;
-  deleteMember: (memberId: string) => void;
+  /** Error from the last roster load (role API), shown in the member management screens. */
+  membersError: string | null;
+  reloadMembers: () => Promise<void>;
+  /** Roster changes go to the role API; each resolves to true on success. */
+  updateMemberRole: (memberId: string, role: UserRole) => Promise<boolean>;
+  addMember: (member: Omit<StudentMember, 'id'>) => Promise<boolean>;
+  deleteMember: (memberId: string) => Promise<boolean>;
   addAnnouncement: (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => Promise<void>;
   deleteAnnouncement: (id: string) => Promise<void>;
   markAnnouncementAsRead: (announcementId: string) => Promise<void>;
@@ -46,7 +51,7 @@ interface ClassDataContextType {
 const ClassDataContext = createContext<ClassDataContextType | undefined>(undefined);
 
 export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, firebaseUser, isOnline } = useAuth();
+  const { user, firebaseUser, isOnline, refreshAccess } = useAuth();
   // Firestore rules require request.auth; listeners must wait for (and follow) the Firebase session.
   const authUid = firebaseUser?.uid ?? null;
   const [dbConfig, setDbConfig] = useState<CustomDatabaseConfig>(() => dataService.getConfig());
@@ -54,8 +59,39 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStorage.getAnnouncements());
   const [reminders, setReminders] = useState<ReminderItem[]>(() => offlineStorage.getReminders());
   const [readReceipts, setReadReceipts] = useState<ReadReceipt[]>(() => offlineStorage.getReadReceipts());
-  const [classMembers, setClassMembers] = useState<StudentMember[]>(() => offlineStorage.getClassMembers());
+  // The roster lives in the role-management database behind the role API; localStorage is
+  // only an offline copy of the last successful load.
+  const [classMembers, setClassMembers] = useState<StudentMember[]>([]);
+  const [membersError, setMembersError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isAdminUser = user?.role === 'super_admin' || user?.role === 'class_admin';
+
+  const reloadMembers = useCallback(async () => {
+    if (!isAdminUser) {
+      setClassMembers([]);
+      setMembersError(null);
+      return;
+    }
+    if (!isOnline) {
+      setClassMembers(offlineStorage.getClassMembers());
+      return;
+    }
+    try {
+      const members = (await roleApi.listUsers()).map(toStudentMember);
+      setClassMembers(members);
+      setMembersError(null);
+      offlineStorage.saveClassMembers(members);
+    } catch (err) {
+      console.warn('Role API roster load failed:', err);
+      setMembersError(err instanceof Error ? err.message : 'Gagal memuat daftar anggota.');
+      setClassMembers(offlineStorage.getClassMembers());
+    }
+  }, [isAdminUser, isOnline]);
+
+  // Members only see their own data; admins load the roster for the signed-in account.
+  useEffect(() => {
+    reloadMembers();
+  }, [reloadMembers, user?.id]);
 
   // Firestore listeners when online
   useEffect(() => {
@@ -454,35 +490,84 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  const updateMemberRole = (memberId: string, newRole: UserRole) => {
-    const updated = offlineStorage.updateMemberRole(memberId, newRole);
-    setClassMembers([...updated]);
-    notificationService.dispatchNotification(
-      'Role Anggota Diperbarui',
-      `Perubahan role berhasil disimpan ke basis data kelas.`,
-      'normal'
-    );
+  const describeRosterError = (err: unknown) => {
+    if (err instanceof RoleApiError) {
+      if (err.kind === 'forbidden') return 'Anda tidak memiliki izin untuk mengubah data anggota.';
+      if (err.kind === 'conflict') return err.message || 'Email tersebut sudah terdaftar.';
+      return err.message;
+    }
+    return 'Terjadi kesalahan saat menghubungi server.';
   };
 
-  const addMember = (memberData: Omit<StudentMember, 'id'>) => {
-    const newMember: StudentMember = {
-      ...memberData,
-      id: `mhs-${Date.now()}`,
-    };
-    const updated = [...classMembers, newMember];
-    setClassMembers(updated);
-    offlineStorage.saveClassMembers(updated);
-    notificationService.dispatchNotification(
-      'Anggota Baru Terdaftar',
-      `${newMember.name} ditambahkan dengan peran ${newMember.role}.`,
-      'normal'
-    );
+  const updateMemberRole = async (memberId: string, newRole: UserRole): Promise<boolean> => {
+    const target = classMembers.find(m => m.id === memberId);
+    if (!target || target.role === newRole) return true;
+
+    // Optimistic update, rolled back if the API refuses.
+    const previous = classMembers;
+    setClassMembers(classMembers.map(m => (m.id === memberId ? { ...m, role: newRole } : m)));
+    try {
+      const saved = await roleApi.updateUserRole(memberId, newRole);
+      setClassMembers(curr => {
+        const next = curr.map(m => (m.id === memberId ? (saved ? toStudentMember(saved) : { ...m, role: newRole }) : m));
+        offlineStorage.saveClassMembers(next);
+        return next;
+      });
+      notificationService.dispatchNotification(
+        'Role Anggota Diperbarui',
+        `${target.name} sekarang ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
+        'normal'
+      );
+      // Changing one's own role takes effect immediately.
+      if (user && target.email.toLowerCase() === user.email.toLowerCase()) await refreshAccess();
+      return true;
+    } catch (err) {
+      setClassMembers(previous);
+      notificationService.dispatchNotification('Gagal Mengubah Role', describeRosterError(err), 'urgent');
+      return false;
+    }
   };
 
-  const deleteMember = (memberId: string) => {
-    const updated = classMembers.filter(m => m.id !== memberId);
-    setClassMembers(updated);
-    offlineStorage.saveClassMembers(updated);
+  const addMember = async (memberData: Omit<StudentMember, 'id'>): Promise<boolean> => {
+    try {
+      const created = toStudentMember(
+        await roleApi.createUser({
+          email: memberData.email.trim().toLowerCase(),
+          name: memberData.name.trim(),
+          nim: memberData.nim?.trim() || undefined,
+          role: memberData.role,
+        })
+      );
+      setClassMembers(curr => {
+        const next = [...curr.filter(m => m.id !== created.id), created];
+        offlineStorage.saveClassMembers(next);
+        return next;
+      });
+      notificationService.dispatchNotification(
+        'Anggota Baru Terdaftar',
+        `${created.name} ditambahkan sebagai ${ROLE_DEFINITIONS[created.role]?.label || created.role}.`,
+        'normal'
+      );
+      return true;
+    } catch (err) {
+      notificationService.dispatchNotification('Gagal Menambah Anggota', describeRosterError(err), 'urgent');
+      return false;
+    }
+  };
+
+  const deleteMember = async (memberId: string): Promise<boolean> => {
+    try {
+      await roleApi.deleteUser(memberId);
+      setClassMembers(curr => {
+        const next = curr.filter(m => m.id !== memberId);
+        offlineStorage.saveClassMembers(next);
+        return next;
+      });
+      return true;
+    } catch (err) {
+      notificationService.dispatchNotification('Gagal Menghapus Anggota', describeRosterError(err), 'urgent');
+      return false;
+    }
   };
 
   return (
@@ -496,6 +581,8 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         loading,
         dbConfig,
         updateDbConfig,
+        membersError,
+        reloadMembers,
         updateMemberRole,
         addMember,
         deleteMember,
