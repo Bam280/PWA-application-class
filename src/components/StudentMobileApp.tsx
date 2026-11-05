@@ -57,7 +57,7 @@ import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataSe
 import { CalendarScheduleView } from './CalendarScheduleView';
 
 interface StudentMobileAppProps {
-  viewMode: DeviceViewMode;
+  viewMode?: DeviceViewMode;
 }
 
 type MobileTab = 'home' | 'schedule' | 'announcements' | 'reminders' | 'settings' | 'profile';
@@ -366,44 +366,19 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
   };
 
   return (
-    <div className="flex justify-center p-2 sm:p-6 w-full">
-      {/* Mobile Frame Container */}
-      <div
-        className={`w-full max-w-[420px] bg-slate-50 border border-slate-300 shadow-2xl flex flex-col relative overflow-hidden transition-all duration-300 min-h-[780px] h-[86vh] max-h-[880px] ${
-          viewMode === 'mobile-ios' ? 'rounded-[50px] ring-12 ring-slate-200/90' : 'rounded-[36px] ring-8 ring-slate-200/90'
-        }`}
-      >
-        {/* iOS Dynamic Island / Android Camera Header simulation */}
-        <div className="bg-slate-900 pt-2 pb-1 px-6 flex items-center justify-between text-[11px] text-slate-300 font-mono shrink-0 select-none">
-          <span>09:41</span>
-          {viewMode === 'mobile-ios' ? (
-            <div className="w-24 h-4 bg-black rounded-full mx-auto flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-slate-900 mr-2"></div>
-              <div className="w-2 h-2 rounded-full bg-amber-950"></div>
-            </div>
-          ) : (
-            <div className="w-3.5 h-3.5 bg-black rounded-full mx-auto"></div>
-          )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px]">5G</span>
-            <div className="w-5 h-2.5 border border-slate-400 rounded-sm p-0.5 flex">
-              <div className="w-full bg-amber-400 h-full rounded-2xs"></div>
-            </div>
-          </div>
+    <div className="w-full max-w-5xl mx-auto flex-1 flex flex-col bg-white sm:border sm:border-slate-200/80 sm:rounded-3xl sm:shadow-sm overflow-hidden min-h-[calc(100vh-5rem)] relative">
+      {/* Offline Warning Banner */}
+      {!isOnline && (
+        <div className="bg-amber-500 text-slate-950 px-5 py-2 text-xs flex items-center justify-between shrink-0 shadow-xs font-semibold">
+          <span className="flex items-center gap-2">
+            <WifiOff className="w-4 h-4 shrink-0" />
+            Mode Offline Aktif · Memuat jadwal dan pengumuman dari cache lokal
+          </span>
+          <span className="text-[10px] bg-amber-800 text-white px-2 py-0.5 rounded font-mono font-bold">Lokal</span>
         </div>
+      )}
 
-        {/* Offline Warning Banner */}
-        {!isOnline && (
-          <div className="bg-amber-500 text-slate-950 px-4 py-1.5 text-xs flex items-center justify-between shrink-0 shadow-xs font-semibold">
-            <span className="flex items-center gap-1.5">
-              <WifiOff className="w-3.5 h-3.5 shrink-0" />
-              Mode Offline: Cache Lokal Aktif
-            </span>
-            <span className="text-[10px] bg-amber-700 text-white px-1.5 py-0.5 rounded font-mono">Tersimpan</span>
-          </div>
-        )}
-
-        {/* Top App Bar */}
+      {/* Top App Bar */}
         <div className="px-5 py-3 border-b border-slate-200 bg-white/95 backdrop-blur-md flex items-center justify-between shrink-0 z-10">
           <div className="flex items-center gap-2.5">
             <div className="px-1.5 py-0.5 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-extrabold text-[11px] shadow-xs tracking-wider">
@@ -1462,12 +1437,6 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
             </button>
           )}
         </div>
-
-        {/* iOS Home Indicator Bar simulation */}
-        {viewMode === 'mobile-ios' && (
-          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 w-32 h-1 bg-slate-300 rounded-full pointer-events-none z-30"></div>
-        )}
-      </div>
 
       {/* ANNOUNCEMENT DETAIL MODAL */}
       {selectedAnnouncement && (

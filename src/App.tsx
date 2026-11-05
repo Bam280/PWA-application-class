@@ -6,13 +6,14 @@ import { StudentMobileApp } from './components/StudentMobileApp';
 import { AdminPortal } from './components/AdminPortal';
 import { AuthModal } from './components/AuthModal';
 import { NotificationModal } from './components/NotificationModal';
+import { LoginPage } from './components/LoginPage';
 import { DeviceViewMode } from './types';
 import { notificationService, InAppNotification } from './lib/notifications';
 import { testFirebaseConnection } from './lib/firebase';
 
 const MainApp: React.FC = () => {
-  const { role } = useAuth();
-  // Default to Web Portal for super_admin and class_admin, or iOS mobile view for class_member
+  const { user, role, loading } = useAuth();
+  // Default to Web Portal for super_admin and class_admin, or Class App view for class_member
   const [viewMode, setViewMode] = useState<DeviceViewMode>(() =>
     role === 'class_member' ? 'mobile-ios' : 'portal-web'
   );
@@ -24,9 +25,7 @@ const MainApp: React.FC = () => {
 
   // Sync role changes to sensible default view
   useEffect(() => {
-    if ((role === 'super_admin' || role === 'class_admin') && viewMode === 'mobile-ios') {
-      // Keep user's chosen view unless switching from student
-    } else if (role === 'class_member' && viewMode === 'portal-web') {
+    if (role === 'class_member' && viewMode === 'portal-web') {
       setViewMode('mobile-ios');
     }
   }, [role, viewMode]);
@@ -41,9 +40,26 @@ const MainApp: React.FC = () => {
     return () => unsub();
   }, []);
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-9 h-9 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-xs font-bold text-slate-600">Menghubungkan Sesi ODP IT BNI...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Initial access must be gated by the production login page connected to Firebase Auth
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col">
-      {/* Top Device & Role Navigation Bar */}
+      {/* Top Application Navbar */}
       <TopDeviceBar
         viewMode={viewMode}
         onViewModeChange={setViewMode}
@@ -52,8 +68,8 @@ const MainApp: React.FC = () => {
         notifications={notifications}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col items-center justify-center p-2 sm:p-4">
+      {/* Main Content Area - Full application layout without simulated phone frames */}
+      <main className="flex-1 flex flex-col w-full p-2 sm:p-4 lg:p-6">
         {viewMode === 'portal-web' ? (
           <AdminPortal />
         ) : (

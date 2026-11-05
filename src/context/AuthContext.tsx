@@ -94,22 +94,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(userProfile);
         offlineStorage.saveUserProfile(userProfile);
       } else {
-        // Fallback to cached profile or default Super Admin profile for seamless preview
+        // Only restore if user has an explicit active session saved
         const cached = offlineStorage.getUserProfile();
-        if (!cached) {
-          const defaultAdmin: UserProfile = {
-            id: 'super-admin-1',
-            email: 'julionedna23@gmail.com',
-            displayName: 'Dian Pratama, M.Kom. (Super Admin)',
-            role: 'super_admin',
-            nim: 'Dosen-TI-01',
-            major: 'Koordinator Mata Kuliah & Prodi TI',
-            avatarUrl: ASSET_IMAGES.superAdminAvatar,
-            createdAt: new Date().toISOString(),
-          };
-          setUser(defaultAdmin);
-          offlineStorage.saveUserProfile(defaultAdmin);
-        }
+        setUser(cached);
       }
       setLoading(false);
     });

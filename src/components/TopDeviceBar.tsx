@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Database,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { DeviceViewMode, UserRole, ROLE_DEFINITIONS } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -34,7 +35,7 @@ export const TopDeviceBar: React.FC<TopDeviceBarProps> = ({
   onOpenNotifications,
   notifications,
 }) => {
-  const { user, role, switchRole, isOnline, toggleSimulatedOffline } = useAuth();
+  const { user, role, switchRole, signOut, isOnline, toggleSimulatedOffline } = useAuth();
   const { dbConfig } = useClassData();
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -62,50 +63,36 @@ export const TopDeviceBar: React.FC<TopDeviceBarProps> = ({
           </div>
         </div>
 
-        {/* Device Viewport Mode Switcher */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
-          <button
-            onClick={() => onViewModeChange('mobile-ios')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
-              viewMode === 'mobile-ios'
-                ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilan Aplikasi iOS iPhone"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">iOS (iPhone)</span>
-            <span className="md:hidden">iOS</span>
-          </button>
+        {/* Production Navigation Mode: Tampilan Kelas vs Portal Admin (Khusus Admin & Super Admin) */}
+        {(role === 'super_admin' || role === 'class_admin') && (
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <button
+              onClick={() => onViewModeChange('mobile-ios')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode !== 'portal-web'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Aplikasi Sesi Kelas & Jadwal Trainee ODP"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Aplikasi Kelas</span>
+            </button>
 
-          <button
-            onClick={() => onViewModeChange('mobile-android')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
-              viewMode === 'mobile-android'
-                ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilan Aplikasi Android"
-          >
-            <Tablet className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Android</span>
-            <span className="md:hidden">Android</span>
-          </button>
-
-          <button
-            onClick={() => onViewModeChange('portal-web')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold transition-all ${
-              viewMode === 'portal-web'
-                ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Tampilan Portal Web Desktop Admin"
-          >
-            <Laptop className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Portal Web Admin</span>
-            <span className="md:hidden">Web</span>
-          </button>
-        </div>
+            <button
+              onClick={() => onViewModeChange('portal-web')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all ${
+                viewMode === 'portal-web'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Portal Manajemen Admin"
+            >
+              <Laptop className="w-3.5 h-3.5" />
+              <span>Portal Admin</span>
+            </button>
+          </div>
+        )}
 
         {/* Action Controls & Role/Status Zone */}
         <div className="flex items-center gap-2 sm:gap-3">
@@ -241,6 +228,7 @@ export const TopDeviceBar: React.FC<TopDeviceBarProps> = ({
           <button
             onClick={onOpenAuth}
             className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs text-slate-700 transition-colors"
+            title="Kelola Profil & Sesi SSO"
           >
             {user?.avatarUrl ? (
               <img src={user.avatarUrl} alt={user.displayName} className="w-5 h-5 rounded-full object-cover border border-amber-300" />
@@ -248,8 +236,18 @@ export const TopDeviceBar: React.FC<TopDeviceBarProps> = ({
               <User className="w-4 h-4 text-slate-400" />
             )}
             <span className="hidden sm:inline max-w-[100px] truncate font-semibold">
-              {user ? user.displayName.split(' ')[0] : 'Masuk SSO'}
+              {user ? user.displayName.split(' ')[0] : 'Profil'}
             </span>
+          </button>
+
+          {/* Sign Out Button */}
+          <button
+            onClick={() => signOut()}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-colors shadow-2xs"
+            title="Keluar dari akun dan kembali ke halaman login"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Keluar</span>
           </button>
         </div>
       </div>

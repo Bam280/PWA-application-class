@@ -15,12 +15,21 @@ export const offlineStorage = {
   getSchedules(): ScheduleItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          // Filter out dummy items
+          const cleaned = parsed.filter(item => !item.id.startsWith('sch-'));
+          if (cleaned.length !== parsed.length) {
+            this.saveSchedules(cleaned);
+          }
+          return cleaned;
+        }
+      }
     } catch (e) {
       console.warn('Error reading schedules from localStorage', e);
     }
-    this.saveSchedules(INITIAL_SCHEDULES);
-    return INITIAL_SCHEDULES;
+    return [];
   },
 
   saveSchedules(schedules: ScheduleItem[]) {
@@ -34,12 +43,21 @@ export const offlineStorage = {
   getAnnouncements(): Announcement[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          // Filter out dummy items
+          const cleaned = parsed.filter(item => !item.id.startsWith('ann-'));
+          if (cleaned.length !== parsed.length) {
+            this.saveAnnouncements(cleaned);
+          }
+          return cleaned;
+        }
+      }
     } catch (e) {
       console.warn('Error reading announcements from localStorage', e);
     }
-    this.saveAnnouncements(INITIAL_ANNOUNCEMENTS);
-    return INITIAL_ANNOUNCEMENTS;
+    return [];
   },
 
   saveAnnouncements(announcements: Announcement[]) {
@@ -53,12 +71,21 @@ export const offlineStorage = {
   getReminders(): ReminderItem[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.REMINDERS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          // Filter out dummy items
+          const cleaned = parsed.filter(item => !item.id.startsWith('rem-'));
+          if (cleaned.length !== parsed.length) {
+            this.saveReminders(cleaned);
+          }
+          return cleaned;
+        }
+      }
     } catch (e) {
       console.warn('Error reading reminders from localStorage', e);
     }
-    this.saveReminders(INITIAL_REMINDERS);
-    return INITIAL_REMINDERS;
+    return [];
   },
 
   saveReminders(reminders: ReminderItem[]) {
@@ -96,12 +123,21 @@ export const offlineStorage = {
   getClassMembers(): StudentMember[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.CLASS_MEMBERS);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          // Filter out dummy items
+          const cleaned = parsed.filter(item => !item.id.startsWith('mhs-'));
+          if (cleaned.length !== parsed.length) {
+            this.saveClassMembers(cleaned);
+          }
+          return cleaned;
+        }
+      }
     } catch (e) {
       console.warn('Error reading class members', e);
     }
-    this.saveClassMembers(CLASS_STUDENTS);
-    return CLASS_STUDENTS;
+    return [];
   },
 
   saveClassMembers(members: StudentMember[]) {
