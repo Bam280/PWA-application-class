@@ -29,7 +29,7 @@ const AccessErrorScreen: React.FC = () => {
             <p className="text-xs text-slate-500 truncate">{firebaseUser?.email}</p>
           </div>
         </div>
-        <p className="text-sm text-slate-700 leading-relaxed">{accessError}</p>
+        <p className="text-sm text-slate-700 leading-relaxed break-words">{accessError}</p>
         <div className="grid grid-cols-2 gap-2 text-sm">
           <button
             onClick={async () => {
