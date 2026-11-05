@@ -32,6 +32,7 @@ import {
   Trash2,
   LogOut,
   LayoutDashboard,
+  UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClassData } from '../context/ClassDataContext';
@@ -57,6 +58,7 @@ import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
 import { MembersErrorBanner } from './MembersErrorBanner';
+import { PendingApprovalsPanel } from './PendingApprovalsPanel';
 
 interface StudentMobileAppProps {
   /** Present only for admins: switches to the full admin portal. */
@@ -74,6 +76,9 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     announcements,
     reminders,
     classMembers,
+    pendingApprovals,
+    approvePendingUser,
+    rejectPendingUser,
     dbConfig,
     updateDbConfig,
     updateMemberRole,
@@ -134,7 +139,9 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
   };
 
   // Mobile Settings Sub-Tab
-  const [mobileSettingsSubTab, setMobileSettingsSubTab] = useState<'roles' | 'database' | 'account'>('roles');
+  const [mobileSettingsSubTab, setMobileSettingsSubTab] = useState<'approvals' | 'roles' | 'database' | 'account'>(() =>
+    pendingApprovals && pendingApprovals.length > 0 ? 'approvals' : 'roles'
+  );
 
   // Schedule filtering by day (default to today's day 1-7)
   const currentDayOfWeek = new Date().getDay() === 0 ? 7 : new Date().getDay();
@@ -1044,7 +1051,19 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
               {/* Sub-tab navigation for Super Admin vs Admin Kelas */}
               {isSuperAdmin ? (
-                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-2xl text-[11px] font-bold">
+                <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-2xl text-[10px] font-bold">
+                  <button
+                    onClick={() => setMobileSettingsSubTab('approvals')}
+                    className={`py-2 px-1 rounded-xl transition-all text-center flex flex-col items-center gap-1 relative ${
+                      mobileSettingsSubTab === 'approvals' ? 'bg-amber-500 text-slate-950 shadow-xs' : 'text-slate-600'
+                    }`}
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Konfirmasi</span>
+                    {pendingApprovals.length > 0 && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                    )}
+                  </button>
                   <button
                     onClick={() => setMobileSettingsSubTab('roles')}
                     className={`py-2 px-1 rounded-xl transition-all text-center flex flex-col items-center gap-1 ${
@@ -1052,7 +1071,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                     }`}
                   >
                     <Crown className="w-3.5 h-3.5" />
-                    <span>Role Kelas</span>
+                    <span>Role</span>
                   </button>
                   <button
                     onClick={() => setMobileSettingsSubTab('database')}
@@ -1082,6 +1101,17 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                   <p className="text-[11px] text-slate-600">
                     Anda memiliki wewenang untuk menyiarkan berita kelas, memperbarui jadwal, dan mengatur tenggat pengingat di HP ini.
                   </p>
+                </div>
+              )}
+
+              {/* SUBTAB APPROVALS: SUPER ADMIN ONLY */}
+              {isSuperAdmin && mobileSettingsSubTab === 'approvals' && (
+                <div className="space-y-3">
+                  <PendingApprovalsPanel
+                    pendingApprovals={pendingApprovals}
+                    onApprove={approvePendingUser}
+                    onReject={rejectPendingUser}
+                  />
                 </div>
               )}
 

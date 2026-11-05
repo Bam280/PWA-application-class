@@ -1,4 +1,4 @@
-import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, UserProfile, StudentMember, UserRole } from '../types';
+import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, UserProfile, StudentMember, UserRole, PendingUserApproval } from '../types';
 import { INITIAL_SCHEDULES, INITIAL_ANNOUNCEMENTS, INITIAL_REMINDERS, CLASS_STUDENTS } from './seedData';
 
 const STORAGE_KEYS = {
@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   USER_PROFILE: 'uniclass_user_profile',
   SIMULATED_OFFLINE: 'uniclass_simulated_offline',
   CLASS_MEMBERS: 'uniclass_class_members',
+  PENDING_APPROVALS: 'uniclass_pending_approvals',
   DATA_VERSION: 'uniclass_data_clean_version',
 };
 
@@ -216,6 +217,81 @@ export const offlineStorage = {
   isAppOnline(): boolean {
     if (this.getSimulatedOffline()) return false;
     return typeof navigator !== 'undefined' ? navigator.onLine : true;
+  },
+
+  getPendingApprovals(): PendingUserApproval[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PENDING_APPROVALS);
+      if (data) return JSON.parse(data);
+    } catch (e) {
+      console.warn('Error reading pending approvals', e);
+    }
+    return [];
+  },
+
+  savePendingApprovals(approvals: PendingUserApproval[]) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.PENDING_APPROVALS, JSON.stringify(approvals));
+      window.dispatchEvent(new Event('pending-approvals-changed'));
+    } catch (e) {
+      console.warn('Error saving pending approvals', e);
+    }
+  },
+
+  addPendingApproval(req: { uid: string; email: string; displayName: string; avatarUrl?: string }): PendingUserApproval {
+    const current = this.getPendingApprovals();
+    const normalizedEmail = req.email.trim().toLowerCase();
+    const existing = current.find(p => p.email.toLowerCase() === normalizedEmail);
+    if (existing) {
+      return existing;
+    }
+    const newApproval: PendingUserApproval = {
+      id: `req-${Date.now()}`,
+      uid: req.uid,
+      email: normalizedEmail,
+      displayName: req.displayName || req.email.split('@')[0],
+      avatarUrl: req.avatarUrl,
+      requestedAt: new Date().toISOString(),
+      status: 'pending',
+    };
+    const updated = [newApproval, ...current];
+    this.savePendingApprovals(updated);
+    return newApproval;
+  },
+
+  approveUserAccess(id: string, role: UserRole, nim: string, approvedBy: string): StudentMember | null {
+    const current = this.getPendingApprovals();
+    const target = current.find(p => p.id === id);
+    if (!target) return null;
+
+    // Remove from pending
+    const updatedPending = current.filter(p => p.id !== id);
+    this.savePendingApprovals(updatedPending);
+
+    // Add to class members roster
+    const newMember: StudentMember = {
+      id: target.uid || `mhs-${Date.now()}`,
+      name: target.displayName,
+      nim: nim || `ODP-IT-2026-${Math.floor(100 + Math.random() * 900)}`,
+      email: target.email,
+      avatarUrl: target.avatarUrl || '',
+      attendanceRate: 100,
+      lastActive: 'Baru saja dikonfirmasi',
+      role,
+      status: 'active',
+    };
+
+    const members = this.getClassMembers();
+    const updatedMembers = [...members.filter(m => m.email.toLowerCase() !== target.email.toLowerCase()), newMember];
+    this.saveClassMembers(updatedMembers);
+
+    return newMember;
+  },
+
+  rejectUserAccess(id: string, rejectedBy: string) {
+    const current = this.getPendingApprovals();
+    const updated = current.filter(p => p.id !== id);
+    this.savePendingApprovals(updated);
   },
 };
 

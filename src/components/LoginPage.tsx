@@ -7,7 +7,7 @@ import { AdminEmailLogin } from './AdminEmailLogin';
 
 export const LoginPage: React.FC = () => {
   const { signInWithGoogle, authError, clearAuthError, isOnline } = useAuth();
-  const { schedules, classMembers } = useClassData();
+  const { schedules, classMembers, announcements } = useClassData();
   const [loadingGoogle, setLoadingGoogle] = useState(false);
 
   const handleGoogleLogin = async () => {
@@ -67,9 +67,9 @@ export const LoginPage: React.FC = () => {
 
                   <div className="p-3 bg-slate-100 rounded-2xl border border-slate-200 text-center">
                     <span className="text-xl font-mono font-extrabold text-slate-900 block">
-                      100%
+                      {announcements.length}
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Kehadiran</span>
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Pengumuman</span>
                   </div>
                 </div>
 

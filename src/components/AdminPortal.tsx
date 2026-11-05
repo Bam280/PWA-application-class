@@ -53,6 +53,7 @@ import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
 import { MembersErrorBanner } from './MembersErrorBanner';
+import { PendingApprovalsPanel } from './PendingApprovalsPanel';
 
 interface AdminPortalProps {
   onOpenApp: () => void;
@@ -68,6 +69,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     reminders,
     readReceipts,
     classMembers,
+    pendingApprovals,
+    approvePendingUser,
+    rejectPendingUser,
     dbConfig,
     updateDbConfig,
     updateMemberRole,
@@ -130,7 +134,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   };
 
   // Settings sub-tab for Super Admin
-  const [settingsTab, setSettingsTab] = useState<'roles' | 'database' | 'calendar'>('roles');
+  const [settingsTab, setSettingsTab] = useState<'approvals' | 'roles' | 'database' | 'calendar'>(() =>
+    pendingApprovals && pendingApprovals.length > 0 ? 'approvals' : 'roles'
+  );
 
   // Role Management State (Super Admin)
   const [roleSearchQuery, setRoleSearchQuery] = useState('');
@@ -583,11 +589,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                 <Settings className="w-4 h-4" />
                 <span>Pengaturan Sistem</span>
               </div>
-              {isSuperAdmin && (
+              {isSuperAdmin && pendingApprovals.length > 0 ? (
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500 text-white animate-pulse">
+                  {pendingApprovals.length} Konfirmasi
+                </span>
+              ) : isSuperAdmin ? (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-950">
                   Super
                 </span>
-              )}
+              ) : null}
             </button>
           </nav>
         </div>
@@ -1447,6 +1457,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
             <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200 text-xs">
               {isSuperAdmin && (
                 <button
+                  onClick={() => setSettingsTab('approvals')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all relative ${
+                    settingsTab === 'approvals'
+                      ? 'bg-amber-500 text-slate-950 shadow-xs ring-1 ring-amber-500/20'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <UserCheck className="w-4 h-4 text-slate-950" />
+                  <span>Konfirmasi User SSO</span>
+                  {pendingApprovals.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                      {pendingApprovals.length}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              {isSuperAdmin && (
+                <button
                   onClick={() => setSettingsTab('roles')}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition-all ${
                     settingsTab === 'roles'
@@ -1485,6 +1514,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                 <span>Ekspor & Sinkronisasi Kalender (.ICS)</span>
               </button>
             </div>
+
+            {/* SUBTAB 0: KONFIRMASI USER SSO BARU (SUPER ADMIN ONLY) */}
+            {settingsTab === 'approvals' && isSuperAdmin && (
+              <PendingApprovalsPanel
+                pendingApprovals={pendingApprovals}
+                onApprove={approvePendingUser}
+                onReject={rejectPendingUser}
+              />
+            )}
 
             {/* SUBTAB 1: KELOLA ROLE KELAS (SUPER ADMIN ONLY) */}
             {settingsTab === 'roles' && (

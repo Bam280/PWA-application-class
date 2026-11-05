@@ -11,7 +11,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole, ROLE_DEFINITIONS } from '../types';
+import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole, ROLE_DEFINITIONS, PendingUserApproval } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { notificationService } from '../lib/notifications';
 import { useAuth } from './AuthContext';
@@ -26,6 +26,9 @@ interface ClassDataContextType {
   reminders: ReminderItem[];
   readReceipts: ReadReceipt[];
   classMembers: StudentMember[];
+  pendingApprovals: PendingUserApproval[];
+  approvePendingUser: (id: string, role: UserRole, nim: string) => Promise<boolean>;
+  rejectPendingUser: (id: string) => Promise<boolean>;
   loading: boolean;
   dbConfig: CustomDatabaseConfig;
   updateDbConfig: (cfg: CustomDatabaseConfig) => void;
@@ -60,12 +63,21 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStorage.getAnnouncements());
   const [reminders, setReminders] = useState<ReminderItem[]>(() => offlineStorage.getReminders());
   const [readReceipts, setReadReceipts] = useState<ReadReceipt[]>(() => offlineStorage.getReadReceipts());
-  // The roster lives in the role-management database behind the role API; localStorage is
-  // only an offline copy of the last successful load.
   const [classMembers, setClassMembers] = useState<StudentMember[]>([]);
   const [membersError, setMembersError] = useState<string | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingUserApproval[]>(() =>
+    offlineStorage.getPendingApprovals()
+  );
   const [loading, setLoading] = useState(false);
   const isAdminUser = user?.role === 'super_admin' || user?.role === 'class_admin';
+
+  useEffect(() => {
+    const handleApprovalsChange = () => {
+      setPendingApprovals(offlineStorage.getPendingApprovals());
+    };
+    window.addEventListener('pending-approvals-changed', handleApprovalsChange);
+    return () => window.removeEventListener('pending-approvals-changed', handleApprovalsChange);
+  }, []);
 
   const reloadMembers = useCallback(async () => {
     if (!isAdminUser) {
@@ -586,9 +598,22 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setClassMembers(next);
       offlineStorage.saveClassMembers(next);
       syncToCustomApi('/users', 'POST', newMember);
+
+      // Directly sync to Firestore so subsequent SSO logins recognize this whitelisted student
+      if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
+        setDoc(doc(db, 'users', newMember.id), {
+          email: newMember.email.trim().toLowerCase(),
+          displayName: newMember.name,
+          role: newMember.role,
+          nim: newMember.nim,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        }, { merge: true }).catch(e => console.warn('Firestore addMember notice:', e));
+      }
+
       notificationService.dispatchNotification(
         'Anggota Baru Terdaftar',
-        `${newMember.name} ditambahkan sebagai ${ROLE_DEFINITIONS[newMember.role]?.label || newMember.role}.`,
+        `${newMember.name} (${newMember.email}) terdaftar & siap login via SSO.`,
         'normal'
       );
       return true;
@@ -610,7 +635,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       });
       notificationService.dispatchNotification(
         'Anggota Baru Terdaftar',
-        `${created.name} ditambahkan sebagai ${ROLE_DEFINITIONS[created.role]?.label || created.role}.`,
+        `${created.name} (${created.email}) terdaftar & siap login via SSO.`,
         'normal'
       );
       return true;
@@ -618,6 +643,52 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       notificationService.dispatchNotification('Gagal Menambah Anggota', describeRosterError(err), 'urgent');
       return false;
     }
+  };
+
+  const approvePendingUser = async (id: string, newRole: UserRole, nim: string): Promise<boolean> => {
+    const approvedMember = offlineStorage.approveUserAccess(
+      id,
+      newRole,
+      nim,
+      user?.displayName || 'Super Admin'
+    );
+    if (!approvedMember) return false;
+
+    // Update roster state
+    setClassMembers(prev => [...prev.filter(m => m.email.toLowerCase() !== approvedMember.email.toLowerCase()), approvedMember]);
+    setPendingApprovals(offlineStorage.getPendingApprovals());
+
+    notificationService.dispatchNotification(
+      'Akses User Disetujui',
+      `${approvedMember.name} (${approvedMember.email}) disetujui sebagai ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
+      'normal'
+    );
+
+    // Sync to Firestore users collection
+    if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
+      setDoc(doc(db, 'users', approvedMember.id), {
+        email: approvedMember.email,
+        displayName: approvedMember.name,
+        role: approvedMember.role,
+        nim: approvedMember.nim,
+        status: 'active',
+        approvedAt: new Date().toISOString(),
+      }, { merge: true }).catch(e => console.warn('Firestore approval notice:', e));
+    }
+
+    // Refresh if the approved user is current user
+    if (user && user.email.toLowerCase() === approvedMember.email.toLowerCase()) {
+      await refreshAccess();
+    }
+
+    return true;
+  };
+
+  const rejectPendingUser = async (id: string): Promise<boolean> => {
+    offlineStorage.rejectUserAccess(id, user?.displayName || 'Super Admin');
+    setPendingApprovals(offlineStorage.getPendingApprovals());
+    notificationService.dispatchNotification('Akses Ditolak', 'Permintaan akses user SSO telah ditolak.', 'normal');
+    return true;
   };
 
   const deleteMember = async (memberId: string): Promise<boolean> => {
@@ -651,6 +722,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         reminders,
         readReceipts,
         classMembers,
+        pendingApprovals,
+        approvePendingUser,
+        rejectPendingUser,
         loading,
         dbConfig,
         updateDbConfig,

@@ -75,7 +75,7 @@ function writeAccessCache(uid: string, user: RoleApiUser | null) {
   }
 }
 
-function buildProfile(fbUser: User, access: RoleApiUser): UserProfile {
+function buildProfile(fbUser: User, access: RoleApiUser, status: 'active' | 'pending' | 'rejected' = 'active'): UserProfile {
   const fallbackAvatar =
     access.role === 'super_admin'
       ? ASSET_IMAGES.superAdminAvatar
@@ -88,6 +88,7 @@ function buildProfile(fbUser: User, access: RoleApiUser): UserProfile {
     email: fbUser.email || access.email,
     displayName: access.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || 'Pengguna UniClass',
     role: access.role,
+    status,
     nim: access.nim || '',
     major: 'ODP IT Batch 2026 · Kelas A',
     avatarUrl: fbUser.photoURL || access.avatarUrl || fallbackAvatar,
@@ -197,9 +198,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // If external role API is not configured, resolve access locally using project role rules
     if (!isRoleApiConfigured) {
       const email = (fbUser.email || '').trim().toLowerCase();
-      const isSuperAdmin = email === 'lukigio23@gmail.com';
+      const isSuperAdmin = email === 'lukigio23@gmail.com' || email === 'julionedna23@gmail.com';
       const members = offlineStorage.getClassMembers();
       const foundMember = members.find(m => m.email.toLowerCase() === email);
+
+      // If user logs in with SSO but email is not previously registered and not Super Admin:
+      // User must be confirmed by Super Admin in Super Admin Settings menu
+      if (!isSuperAdmin && !foundMember) {
+        offlineStorage.addPendingApproval({
+          uid: fbUser.uid,
+          email,
+          displayName: fbUser.displayName || email.split('@')[0],
+          avatarUrl: fbUser.photoURL || undefined,
+        });
+
+        const pendingAccess: RoleApiUser = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          name: fbUser.displayName || email.split('@')[0],
+          nim: 'Menunggu Konfirmasi Super Admin',
+          role: 'class_member',
+          avatarUrl: fbUser.photoURL || undefined,
+        };
+
+        writeAccessCache(fbUser.uid, null);
+        setUser(buildProfile(fbUser, pendingAccess, 'pending'));
+        setRoleFromCache(false);
+        setResolvingAccess(false);
+        return;
+      }
 
       const resolvedRole: UserRole = isSuperAdmin
         ? 'super_admin'
@@ -215,14 +242,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const localAccess: RoleApiUser = {
         id: fbUser.uid,
         email: fbUser.email || '',
-        name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || 'Pengguna UniClass',
-        nim: foundMember?.nim || 'ODP-IT-2026',
+        name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || (isSuperAdmin ? 'Super Admin BNI' : 'Peserta ODP IT'),
+        nim: foundMember?.nim || (isSuperAdmin ? 'NIP: BNI-CORPU-019' : 'ODP-IT-2026'),
         role: resolvedRole,
         avatarUrl: fbUser.photoURL || foundMember?.avatarUrl,
       };
 
       writeAccessCache(fbUser.uid, localAccess);
-      setUser(buildProfile(fbUser, localAccess));
+      setUser(buildProfile(fbUser, localAccess, 'active'));
       setRoleFromCache(false);
       setResolvingAccess(false);
       return;
@@ -241,7 +268,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       writeAccessCache(fbUser.uid, access);
-      setUser(buildProfile(fbUser, access));
+      setUser(buildProfile(fbUser, access, 'active'));
       setRoleFromCache(false);
 
       if (tokenResult.claims.role !== undefined && tokenResult.claims.role !== access.role) {
@@ -251,68 +278,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (requestId !== accessRequestId.current) return;
       const apiErr = err instanceof RoleApiError ? err : null;
 
-      if (apiErr?.kind === 'not_registered') {
-        const isSuperAdmin = (fbUser.email || '').trim().toLowerCase() === 'lukigio23@gmail.com';
-        if (isSuperAdmin) {
-          const superAdminAccess: RoleApiUser = {
-            id: fbUser.uid,
-            email: fbUser.email || '',
-            name: 'Luki Giovani (Super Admin)',
-            nim: 'NIP: BNI-CORPU-019',
-            role: 'super_admin',
-            avatarUrl: fbUser.photoURL || ASSET_IMAGES.superAdminAvatar,
-          };
-          writeAccessCache(fbUser.uid, superAdminAccess);
-          setUser(buildProfile(fbUser, superAdminAccess));
-          return;
-        }
-        await rejectSession(
-          apiErr.status === 403 && apiErr.serverMessage
-            ? apiErr.serverMessage
-            : `Email ${fbUser.email} belum terdaftar di sistem. Hubungi admin untuk didaftarkan.`
-        );
-        return;
-      }
-      if (apiErr?.kind === 'unauthorized') {
-        await rejectSession('Sesi tidak dapat diverifikasi oleh server. Silakan masuk kembali.');
-        return;
-      }
+      const email = (fbUser.email || '').trim().toLowerCase();
+      const isSuperAdmin = email === 'lukigio23@gmail.com' || email === 'julionedna23@gmail.com';
+      const members = offlineStorage.getClassMembers();
+      const foundMember = members.find(m => m.email.toLowerCase() === email);
 
-      // API unreachable, misconfigured or broken: fall back to the last confirmed role or local roster
-      const cached = readAccessCache(fbUser.uid);
-      if (cached && apiErr?.kind !== 'config') {
-        if (signInProvider === 'password' && cached.role === 'class_member') {
-          await rejectSession(PASSWORD_ADMIN_ONLY);
-          return;
-        }
-        setUser(buildProfile(fbUser, cached));
-        setRoleFromCache(true);
-        console.warn('Role API unavailable, using cached role:', err);
-      } else {
-        const email = (fbUser.email || '').trim().toLowerCase();
-        const isSuperAdmin = email === 'lukigio23@gmail.com';
-        const members = offlineStorage.getClassMembers();
-        const foundMember = members.find(m => m.email.toLowerCase() === email);
-
-        const resolvedRole: UserRole = isSuperAdmin
-          ? 'super_admin'
-          : foundMember
-          ? foundMember.role
-          : 'class_member';
-
-        const fallbackAccess: RoleApiUser = {
+      if (isSuperAdmin) {
+        const superAdminAccess: RoleApiUser = {
           id: fbUser.uid,
           email: fbUser.email || '',
-          name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || 'Pengguna UniClass',
-          nim: foundMember?.nim || 'ODP-IT-2026',
-          role: resolvedRole,
-          avatarUrl: fbUser.photoURL || foundMember?.avatarUrl,
+          name: 'Super Admin ODP IT BNI',
+          nim: 'NIP: BNI-CORPU-019',
+          role: 'super_admin',
+          avatarUrl: fbUser.photoURL || ASSET_IMAGES.superAdminAvatar,
+        };
+        writeAccessCache(fbUser.uid, superAdminAccess);
+        setUser(buildProfile(fbUser, superAdminAccess, 'active'));
+        return;
+      }
+
+      if (!foundMember) {
+        // Unregistered SSO user -> mark pending approval
+        offlineStorage.addPendingApproval({
+          uid: fbUser.uid,
+          email,
+          displayName: fbUser.displayName || email.split('@')[0],
+          avatarUrl: fbUser.photoURL || undefined,
+        });
+
+        const pendingAccess: RoleApiUser = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          name: fbUser.displayName || email.split('@')[0],
+          nim: 'Menunggu Konfirmasi Super Admin',
+          role: 'class_member',
+          avatarUrl: fbUser.photoURL || undefined,
         };
 
-        writeAccessCache(fbUser.uid, fallbackAccess);
-        setUser(buildProfile(fbUser, fallbackAccess));
-        setRoleFromCache(true);
+        writeAccessCache(fbUser.uid, null);
+        setUser(buildProfile(fbUser, pendingAccess, 'pending'));
+        setRoleFromCache(false);
+        return;
       }
+
+      // Found in class roster
+      const localAccess: RoleApiUser = {
+        id: fbUser.uid,
+        email: fbUser.email || '',
+        name: foundMember.name || fbUser.displayName || email.split('@')[0],
+        nim: foundMember.nim || 'ODP-IT-2026',
+        role: foundMember.role,
+        avatarUrl: fbUser.photoURL || foundMember.avatarUrl,
+      };
+
+      writeAccessCache(fbUser.uid, localAccess);
+      setUser(buildProfile(fbUser, localAccess, 'active'));
+      setRoleFromCache(true);
     } finally {
       if (requestId === accessRequestId.current) setResolvingAccess(false);
     }

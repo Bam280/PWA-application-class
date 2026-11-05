@@ -6,6 +6,7 @@ import { StudentMobileApp } from './components/StudentMobileApp';
 import { AdminPortal } from './components/AdminPortal';
 import { NotificationModal } from './components/NotificationModal';
 import { LoginPage } from './components/LoginPage';
+import { PendingApprovalView } from './components/PendingApprovalView';
 import { notificationService, InAppNotification } from './lib/notifications';
 import { testFirebaseConnection } from './lib/firebase';
 import { useMediaQuery } from './lib/useMediaQuery';
@@ -57,7 +58,7 @@ const AccessErrorScreen: React.FC = () => {
 };
 
 const MainApp: React.FC = () => {
-  const { user, firebaseUser, role, loading, accessError } = useAuth();
+  const { user, firebaseUser, role, loading, accessError, refreshAccess, signOut } = useAuth();
   const isAdmin = role === 'super_admin' || role === 'class_admin';
   // Desktop-sized screens get the admin portal; phones and tablets get the class app.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -109,6 +110,17 @@ const MainApp: React.FC = () => {
   // Access is gated by the login page connected to Firebase Auth
   if (!user) {
     return <LoginPage />;
+  }
+
+  // If user signed in with SSO Google but is waiting for Super Admin confirmation:
+  if (user.status === 'pending') {
+    return (
+      <PendingApprovalView
+        user={user}
+        onRefresh={refreshAccess}
+        onSignOut={signOut}
+      />
+    );
   }
 
   return (

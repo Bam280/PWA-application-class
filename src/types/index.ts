@@ -61,6 +61,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: UserRole;
+  status?: 'active' | 'pending' | 'rejected';
   nim?: string;
   major?: string;
   avatarUrl?: string;
@@ -168,6 +169,21 @@ export interface StudentMember {
   attendanceRate: number;
   lastActive: string;
   role: UserRole;
+  status?: 'active' | 'pending' | 'rejected';
+}
+
+export interface PendingUserApproval {
+  id: string;
+  uid: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+  requestedAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  assignedRole?: UserRole;
+  assignedNim?: string;
+  decisionBy?: string;
+  decisionAt?: string;
 }
 
 export type DeviceViewMode = 'mobile-ios' | 'mobile-android' | 'portal-web';
