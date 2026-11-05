@@ -142,7 +142,7 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
 
       {/* Footer */}
       <footer className="w-full text-center text-[11px] text-slate-400 py-2">
-        © 2026 PT Bank Negara Indonesia (Persero) Tbk · Corporate University
+        @2026 oleh LebahGantenk
       </footer>
     </div>
   );

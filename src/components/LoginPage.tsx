@@ -46,7 +46,7 @@ export const LoginPage: React.FC = () => {
 
               <div className="p-5 sm:p-6 space-y-4">
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  Platform resmi pelatihan Trainee ODP IT BNI Corporate University. Mengelola agenda materi dari setiap divisi teknologi, pembicara (Dept Head & Team Leader), ruangan kelas Graha Sudirman & BNI Corpu, hingga sinkronisasi otomatis Google Calendar.
+                  Platform kreasi untuk menunjang infomasi anggota kelas, dan tidak berhubungan langsung dengan instansi manapun
                 </p>
 
                 {/* Key Live Database Metrics */}
@@ -94,14 +94,14 @@ export const LoginPage: React.FC = () => {
           <div className="lg:col-span-6 order-first lg:order-none">
             <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl relative space-y-6">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 font-extrabold flex items-center justify-center text-sm shadow-xs ring-2 ring-amber-400/30 tracking-wider shrink-0">
-                  BNI
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 font-extrabold flex items-center justify-center text-lg shadow-xs ring-2 ring-amber-400/30 tracking-wider shrink-0">
+                  🎓
                 </div>
                 <div className="min-w-0">
                   <span className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight block">
-                    ODP IT BNI Class Hub
+                    Uniclass Hub
                   </span>
-                  <p className="text-[11px] text-slate-500">Corporate University · Management Class</p>
+                  <p className="text-[11px] text-slate-500">management class</p>
                 </div>
               </div>
 
@@ -240,7 +240,7 @@ export const LoginPage: React.FC = () => {
 
       {/* Bottom Footer */}
       <footer className="w-full py-4 px-6 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-slate-200 bg-white/70 text-center text-[11px] sm:text-xs text-slate-500">
-        © 2026 PT Bank Negara Indonesia (Persero) Tbk · BNI Corporate University · ODP IT Management Class
+        @2026 oleh LebahGantenk
       </footer>
     </div>
   );
