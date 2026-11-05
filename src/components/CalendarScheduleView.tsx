@@ -135,10 +135,14 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
       isToday: boolean;
     }> = [];
 
-    // Sort by dayOfWeek, then startTime
+    // Sort by dayOfWeek, then startTime safely
     const sorted = [...schedules].sort((a, b) => {
-      if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
-      return a.startTime.localeCompare(b.startTime);
+      const dayA = a?.dayOfWeek || 0;
+      const dayB = b?.dayOfWeek || 0;
+      if (dayA !== dayB) return dayA - dayB;
+      const startA = a?.startTime || '';
+      const startB = b?.startTime || '';
+      return startA.localeCompare(startB);
     });
 
     for (const sch of sorted) {

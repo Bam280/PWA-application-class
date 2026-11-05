@@ -247,32 +247,48 @@ export function getDateInWeek(week: CalendarWeek, targetDayOfWeek: number): Date
  */
 export function getGoogleCalendarUrlForDateSchedule(
   schedule: ScheduleItem,
-  targetDate: Date
+  targetDate?: Date | null
 ): string {
-  const year = targetDate.getFullYear();
-  const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-  const day = String(targetDate.getDate()).padStart(2, '0');
+  if (!schedule) return '#';
 
-  const startFormatted = `${year}${month}${day}T${schedule.startTime.replace(':', '')}00`;
-  const endFormatted = `${year}${month}${day}T${schedule.endTime.replace(':', '')}00`;
+  const safeDate = targetDate instanceof Date && !isNaN(targetDate.getTime()) ? targetDate : new Date();
+  const year = safeDate.getFullYear();
+  const month = String(safeDate.getMonth() + 1).padStart(2, '0');
+  const day = String(safeDate.getDate()).padStart(2, '0');
 
+  const rawStart = String(schedule.startTime || (schedule as any).start || (schedule as any).start_time || '08:00');
+  const cleanStart = rawStart.replace(/[^0-9]/g, '').padEnd(4, '0').slice(0, 4);
+
+  const rawEnd = String(schedule.endTime || (schedule as any).end || (schedule as any).end_time || '10:00');
+  const cleanEnd = rawEnd.replace(/[^0-9]/g, '').padEnd(4, '0').slice(0, 4);
+
+  const startFormatted = `${year}${month}${day}T${cleanStart}00`;
+  const endFormatted = `${year}${month}${day}T${cleanEnd}00`;
+
+  const lecturer = schedule.lecturer || 'Pembicara Divisi';
   const speakerInfo = schedule.speakerRole
-    ? `${schedule.lecturer} (${schedule.speakerRole})`
-    : schedule.lecturer;
+    ? `${lecturer} (${schedule.speakerRole})`
+    : lecturer;
   const divisionInfo = schedule.divisionName ? `Divisi: ${schedule.divisionName}\n` : '';
 
-  const title = encodeURIComponent(`[ODP IT BNI] ${schedule.courseCode} - ${schedule.courseName}`);
+  const courseCode = schedule.courseCode || 'ODP-IT';
+  const courseName = schedule.courseName || 'Sesi Pelatihan IT';
+  const room = schedule.room || 'Ruang Kelas';
+  const building = schedule.building || 'BNI Corporate University';
+  const classType = (schedule.classType || 'offline').toUpperCase();
+
+  const title = encodeURIComponent(`[ODP IT BNI] ${courseCode} - ${courseName}`);
   const details = encodeURIComponent(
-    `Sesi / Topik: ${schedule.courseName}\n` +
-    `Kode Modul: ${schedule.courseCode}\n` +
+    `Sesi / Topik: ${courseName}\n` +
+    `Kode Modul: ${courseCode}\n` +
     divisionInfo +
     `Pembicara: ${speakerInfo}\n` +
-    `Ruang Kelas: ${schedule.room} (${schedule.building})\n` +
-    `Tipe: ${schedule.classType.toUpperCase()}\n` +
+    `Ruang Kelas: ${room} (${building})\n` +
+    `Tipe: ${classType}\n` +
     (schedule.notes ? `Catatan: ${schedule.notes}\n` : '') +
     `ODP IT Class BNI Corporate University 2026`
   );
-  const location = encodeURIComponent(`${schedule.room}, ${schedule.building}`);
+  const location = encodeURIComponent(`${room}, ${building}`);
 
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startFormatted}/${endFormatted}&details=${details}&location=${location}`;
 }

@@ -48,20 +48,24 @@ export function generateSchedulesICS(schedules: ScheduleItem[], calendarName = '
   const nowStr = formatICalDate(new Date());
 
   const eventBlocks = schedules.map(item => {
-    const startDate = getNextDateForDay(item.dayOfWeek, item.startTime);
-    const [startH, startM] = item.startTime.split(':').map(Number);
-    const [endH, endM] = item.endTime.split(':').map(Number);
+    const rawStart = String(item.startTime || '08:00');
+    const rawEnd = String(item.endTime || '10:00');
+    const startDate = getNextDateForDay(item.dayOfWeek, rawStart);
+    const [startH, startM] = (rawStart.includes(':') ? rawStart : '08:00').split(':').map(Number);
+    const [endH, endM] = (rawEnd.includes(':') ? rawEnd : '10:00').split(':').map(Number);
 
     const endDate = new Date(startDate);
-    const durationMin = (endH * 60 + endM) - (startH * 60 + startM);
+    const durationMin = ((endH || 10) * 60 + (endM || 0)) - ((startH || 8) * 60 + (startM || 0));
     endDate.setMinutes(startDate.getMinutes() + (durationMin > 0 ? durationMin : 100));
 
     const byDay = ICAL_DAY_MAP[item.dayOfWeek] || 'MO';
-    const summary = `[ODP IT BNI] ${item.courseCode} - ${item.courseName}`;
-    const location = `${item.room}, ${item.building}`;
-    const speakerText = item.speakerRole ? `${item.lecturer} (${item.speakerRole})` : item.lecturer;
+    const summary = `[ODP IT BNI] ${item.courseCode || 'ODP-IT'} - ${item.courseName || 'Sesi Pelatihan'}`;
+    const location = `${item.room || 'Ruang Kelas'}, ${item.building || 'BNI Corporate University'}`;
+    const lecturer = item.lecturer || 'Pembicara Divisi';
+    const speakerText = item.speakerRole ? `${lecturer} (${item.speakerRole})` : lecturer;
     const divisionText = item.divisionName ? `Divisi: ${item.divisionName}\\n` : '';
-    const description = `${divisionText}Pembicara: ${speakerText}\\nRuang: ${item.room}\\nMode: ${item.classType.toUpperCase()}\\nCatatan: ${item.notes || 'Tidak ada catatan khusus.'}\\nODP IT BNI Class Management`;
+    const classType = (item.classType || 'offline').toUpperCase();
+    const description = `${divisionText}Pembicara: ${speakerText}\\nRuang: ${item.room || 'Ruang Kelas'}\\nMode: ${classType}\\nCatatan: ${item.notes || 'Tidak ada catatan khusus.'}\\nODP IT BNI Class Management`;
 
     return [
       'BEGIN:VEVENT',
@@ -96,22 +100,26 @@ export function generateSchedulesICS(schedules: ScheduleItem[], calendarName = '
  * Generate direct Google Calendar URL for a single class schedule
  */
 export function getGoogleCalendarUrlForSchedule(item: ScheduleItem): string {
-  const startDate = getNextDateForDay(item.dayOfWeek, item.startTime);
-  const [startH, startM] = item.startTime.split(':').map(Number);
-  const [endH, endM] = item.endTime.split(':').map(Number);
+  if (!item) return '#';
+  const rawStart = String(item.startTime || '08:00');
+  const rawEnd = String(item.endTime || '10:00');
+  const startDate = getNextDateForDay(item.dayOfWeek || 1, rawStart);
+  const [startH, startM] = (rawStart.includes(':') ? rawStart : '08:00').split(':').map(Number);
+  const [endH, endM] = (rawEnd.includes(':') ? rawEnd : '10:00').split(':').map(Number);
 
   const endDate = new Date(startDate);
-  const durationMin = (endH * 60 + endM) - (startH * 60 + startM);
+  const durationMin = ((endH || 10) * 60 + (endM || 0)) - ((startH || 8) * 60 + (startM || 0));
   endDate.setMinutes(startDate.getMinutes() + (durationMin > 0 ? durationMin : 100));
 
   const byDay = ICAL_DAY_MAP[item.dayOfWeek] || 'MO';
-  const title = encodeURIComponent(`[ODP IT BNI] ${item.courseCode} - ${item.courseName}`);
-  const speakerText = item.speakerRole ? `${item.lecturer} (${item.speakerRole})` : item.lecturer;
+  const title = encodeURIComponent(`[ODP IT BNI] ${item.courseCode || 'ODP-IT'} - ${item.courseName || 'Sesi Pelatihan'}`);
+  const lecturer = item.lecturer || 'Pembicara Divisi';
+  const speakerText = item.speakerRole ? `${lecturer} (${item.speakerRole})` : lecturer;
   const divisionText = item.divisionName ? `Divisi: ${item.divisionName}\n` : '';
   const details = encodeURIComponent(
-    `${divisionText}Pembicara: ${speakerText}\nRuang: ${item.room}\nMode: ${item.classType}\nCatatan: ${item.notes || ''}\nODP IT BNI Class Management`
+    `${divisionText}Pembicara: ${speakerText}\nRuang: ${item.room || 'Ruang Kelas'}\nMode: ${item.classType || 'offline'}\nCatatan: ${item.notes || ''}\nODP IT BNI Class Management`
   );
-  const location = encodeURIComponent(`${item.room}, ${item.building}`);
+  const location = encodeURIComponent(`${item.room || 'Ruang Kelas'}, ${item.building || 'BNI Corporate University'}`);
   const dates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`;
   const recur = encodeURIComponent(`RRULE:FREQ=WEEKLY;BYDAY=${byDay}`);
 

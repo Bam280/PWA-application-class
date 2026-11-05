@@ -189,7 +189,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ viewMode }) 
   const daySchedules = useMemo(() => {
     return schedules
       .filter(s => s.dayOfWeek === selectedDay)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      .sort((a, b) => (a?.startTime || '').localeCompare(b?.startTime || ''));
   }, [schedules, selectedDay]);
 
   // Today's next upcoming class

@@ -86,3 +86,18 @@ test('getGoogleCalendarUrlForDateSchedule encodes date properly', () => {
   assert.ok(url.includes('20261103T090000'));
   assert.ok(url.includes('IF-201'));
 });
+
+test('getGoogleCalendarUrlForDateSchedule handles missing/undefined startTime and dates gracefully without throwing', () => {
+  const incompleteSchedule = {
+    id: 'sch-partial',
+    courseName: 'Cloud Computing',
+    courseCode: 'CC-101',
+  } as unknown as ScheduleItem;
+
+  // Must not throw TypeError: Cannot read properties of undefined (reading 'replace')
+  assert.doesNotThrow(() => {
+    const url = getGoogleCalendarUrlForDateSchedule(incompleteSchedule, undefined);
+    assert.ok(url.includes('calendar.google.com'));
+    assert.ok(url.includes('CC-101'));
+  });
+});
