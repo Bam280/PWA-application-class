@@ -8,7 +8,8 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { auth, googleProvider } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { ASSET_IMAGES } from '../lib/seedData';
@@ -212,6 +213,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatarUrl: fbUser.photoURL || undefined,
         });
 
+        // Sync request to Firestore so all super admins see it in real-time
+        try {
+          setDoc(doc(db, 'pending_approvals', fbUser.uid), {
+            id: fbUser.uid,
+            uid: fbUser.uid,
+            email,
+            displayName: fbUser.displayName || email.split('@')[0],
+            avatarUrl: fbUser.photoURL || null,
+            requestedAt: new Date().toISOString(),
+            status: 'pending',
+          }, { merge: true }).catch(() => undefined);
+        } catch {
+          // ignore offline
+        }
+
         const pendingAccess: RoleApiUser = {
           id: fbUser.uid,
           email: fbUser.email || '',
@@ -305,6 +321,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: fbUser.displayName || email.split('@')[0],
           avatarUrl: fbUser.photoURL || undefined,
         });
+
+        try {
+          setDoc(doc(db, 'pending_approvals', fbUser.uid), {
+            id: fbUser.uid,
+            uid: fbUser.uid,
+            email,
+            displayName: fbUser.displayName || email.split('@')[0],
+            avatarUrl: fbUser.photoURL || null,
+            requestedAt: new Date().toISOString(),
+            status: 'pending',
+          }, { merge: true }).catch(() => undefined);
+        } catch {
+          // ignore offline
+        }
 
         const pendingAccess: RoleApiUser = {
           id: fbUser.uid,

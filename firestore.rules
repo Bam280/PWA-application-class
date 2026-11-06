@@ -33,6 +33,7 @@ service cloud.firestore {
         // Role mirrored by the role API into Firebase custom claims (see docs/ROLE_API.md)
         request.auth.token.get('role', '') in ['super_admin', 'class_admin'] ||
         (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'andenboyo@gmail.com' ||
           request.auth.token.email.lower() == 'lukigio23@gmail.com' ||
           request.auth.token.email.lower() == 'julionedna23@gmail.com' ||
           request.auth.token.email.lower().matches('.*@univ\\.ac\\.id$')
@@ -96,6 +97,14 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isCurrentUser(userId) && isValidUser(incoming());
       allow update: if (isCurrentUser(userId) || isAdmin()) && isValidUser(incoming());
+      allow delete: if isAdmin();
+    }
+
+    // Pending approvals collection for Google SSO unconfirmed users
+    match /pending_approvals/{approvalId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 

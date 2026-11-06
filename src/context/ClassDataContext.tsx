@@ -221,12 +221,45 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     );
 
+    // Pending approvals real-time listener for Super Admin
+    let approvalsUnsub = () => {};
+    if (isAdminUser && authUid) {
+      try {
+        approvalsUnsub = onSnapshot(
+          collection(db, 'pending_approvals'),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const remoteList: PendingUserApproval[] = snapshot.docs.map(d => ({
+                id: d.id,
+                uid: d.data().uid || d.id,
+                email: d.data().email || '',
+                displayName: d.data().displayName || '',
+                avatarUrl: d.data().avatarUrl || undefined,
+                requestedAt: d.data().requestedAt || new Date().toISOString(),
+                status: 'pending',
+              }));
+              for (const req of remoteList) {
+                offlineStorage.addPendingApproval(req);
+              }
+              setPendingApprovals(offlineStorage.getPendingApprovals());
+            }
+          },
+          (err) => {
+            console.warn('Pending approvals listener notice:', err.message);
+          }
+        );
+      } catch (e) {
+        console.warn('Error setting up pending approvals listener:', e);
+      }
+    }
+
     return () => {
       schedUnsub();
       annUnsub();
       remUnsub();
+      approvalsUnsub();
     };
-  }, [authUid, isOnline, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
+  }, [authUid, isOnline, isAdminUser, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
   const addAnnouncement = async (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => {
     const newId = `ann-${Date.now()}`;
@@ -661,7 +694,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     );
     if (!approvedMember) return false;
 
-    // Update roster state
+    // Update roster state locally
     setClassMembers(prev => [...prev.filter(m => m.email.toLowerCase() !== approvedMember.email.toLowerCase()), approvedMember]);
     setPendingApprovals(offlineStorage.getPendingApprovals());
 
@@ -671,10 +704,26 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       'normal'
     );
 
-    // Sync to Firestore users collection
-    if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
+    // Sync to PostgreSQL backend via roleApi so /me returns active role for this user
+    if (isRoleApiConfigured) {
+      try {
+        await roleApi.createUser({
+          email: approvedMember.email.trim().toLowerCase(),
+          name: approvedMember.name.trim(),
+          nim: approvedMember.nim.trim(),
+          role: newRole,
+        });
+      } catch (err) {
+        console.warn('Campus API createUser notice (might already exist in PostgreSQL):', err);
+      }
+    }
+    syncToCustomApi('/users', 'POST', approvedMember);
+
+    // Sync to Firestore users collection & remove from pending_approvals
+    if (isOnline) {
+      deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
       setDoc(doc(db, 'users', approvedMember.id), {
-        email: approvedMember.email,
+        email: approvedMember.email.toLowerCase(),
         displayName: approvedMember.name,
         role: approvedMember.role,
         nim: approvedMember.nim,
@@ -694,6 +743,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const rejectPendingUser = async (id: string): Promise<boolean> => {
     offlineStorage.rejectUserAccess(id, user?.displayName || 'Super Admin');
     setPendingApprovals(offlineStorage.getPendingApprovals());
+    if (isOnline) {
+      deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
+    }
     notificationService.dispatchNotification('Akses Ditolak', 'Permintaan akses user SSO telah ditolak.', 'normal');
     return true;
   };
