@@ -16,7 +16,17 @@ import { offlineStorage } from '../lib/offlineStorage';
 import { notificationService } from '../lib/notifications';
 import { useAuth } from './AuthContext';
 import { handleFirestoreError, OperationType } from '../lib/firestoreErrors';
-import { dataService, CustomDatabaseConfig } from '../lib/dataService';
+import {
+  dataService,
+  CustomDatabaseConfig,
+  extractApiErrorDetail,
+  normalizeAnnouncement,
+  normalizeReminder,
+  normalizeSchedule,
+  toApiAnnouncement,
+  toApiReminder,
+  toApiSchedule,
+} from '../lib/dataService';
 import { roleApi, toStudentMember, RoleApiError, isRoleApiConfigured } from '../lib/roleApi';
 import { ASSET_IMAGES } from '../lib/seedData';
 
@@ -39,16 +49,16 @@ interface ClassDataContextType {
   updateMemberRole: (memberId: string, role: UserRole) => Promise<boolean>;
   addMember: (member: Omit<StudentMember, 'id'>) => Promise<boolean>;
   deleteMember: (memberId: string) => Promise<boolean>;
-  addAnnouncement: (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => Promise<void>;
-  deleteAnnouncement: (id: string) => Promise<void>;
+  addAnnouncement: (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => Promise<boolean>;
+  deleteAnnouncement: (id: string) => Promise<boolean>;
   markAnnouncementAsRead: (announcementId: string) => Promise<void>;
-  addSchedule: (item: Omit<ScheduleItem, 'id'>) => Promise<void>;
-  updateSchedule: (id: string, item: Partial<ScheduleItem>) => Promise<void>;
-  deleteSchedule: (id: string) => Promise<void>;
-  addReminder: (item: Omit<ReminderItem, 'id' | 'createdAt'>) => Promise<void>;
-  updateReminder: (id: string, item: Partial<ReminderItem>) => Promise<void>;
+  addSchedule: (item: Omit<ScheduleItem, 'id'>) => Promise<boolean>;
+  updateSchedule: (id: string, item: Partial<ScheduleItem>) => Promise<boolean>;
+  deleteSchedule: (id: string) => Promise<boolean>;
+  addReminder: (item: Omit<ReminderItem, 'id' | 'createdAt'>) => Promise<boolean>;
+  updateReminder: (id: string, item: Partial<ReminderItem>) => Promise<boolean>;
   toggleReminderComplete: (id: string) => void;
-  deleteReminder: (id: string) => Promise<void>;
+  deleteReminder: (id: string) => Promise<boolean>;
   syncWithCloud: () => Promise<void>;
 }
 
@@ -264,6 +274,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     };
   }, [authUid, canLoadData, isOnline, isAdminUser, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
+  /** Save through the private API first, so the screen only ever shows what the server accepted. */
+  const usesCustomApi = dbConfig.provider === 'custom_api' && Boolean(dbConfig.apiBaseUrl);
+
   const addAnnouncement = async (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => {
     const newId = `ann-${Date.now()}`;
     const publishedAt = new Date().toISOString();
@@ -275,37 +288,41 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       totalStudents: 42,
     };
 
-    // Update local state and offline storage immediately
-    const updated = [newAnnouncement, ...announcements];
+    let saved = newAnnouncement;
+    if (usesCustomApi) {
+      const result = await syncToCustomApi('/announcements', 'POST', toApiAnnouncement(newAnnouncement));
+      if (!result.ok) return false;
+      if (result.data) saved = normalizeAnnouncement(result.data);
+    }
+
+    const updated = [saved, ...announcements];
     setAnnouncements(updated);
     offlineStorage.saveAnnouncements(updated);
 
     // Dispatch real-time push notification & sound chime
     notificationService.dispatchNotification(
-      newAnnouncement.title,
-      newAnnouncement.content.slice(0, 90) + '...',
+      saved.title,
+      saved.content.slice(0, 90) + '...',
       newAnnouncement.priority
     );
-
-    // Sync to Custom API if provider is custom_api
-    syncToCustomApi('/announcements', 'POST', newAnnouncement);
 
     // Sync to Firestore if online
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
-        await setDoc(doc(db, 'announcements', newId), newAnnouncement);
+        await setDoc(doc(db, 'announcements', saved.id), saved);
       } catch (err) {
         console.warn('Saved locally, Firestore sync pending:', err);
       }
     }
+    return true;
   };
 
   const deleteAnnouncement = async (id: string) => {
+    if (usesCustomApi && !(await syncToCustomApi(`/announcements/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
+
     const updated = announcements.filter(a => a.id !== id);
     setAnnouncements(updated);
     offlineStorage.saveAnnouncements(updated);
-
-    syncToCustomApi(`/announcements/${id}`, 'DELETE');
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
@@ -314,6 +331,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Firestore delete error:', err);
       }
     }
+    return true;
   };
 
   const markAnnouncementAsRead = async (announcementId: string) => {
@@ -370,33 +388,46 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       updatedAt: new Date().toISOString(),
     };
 
-    const updated = [...schedules, newSchedule];
+    let saved = newSchedule;
+    if (usesCustomApi) {
+      const result = await syncToCustomApi('/schedules', 'POST', toApiSchedule(newSchedule));
+      if (!result.ok) return false;
+      if (result.data) saved = normalizeSchedule(result.data);
+    }
+
+    const updated = [...schedules, saved];
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
 
     notificationService.dispatchNotification(
       'Jadwal Kuliah Diperbarui',
-      `Jadwal baru ditambahkan: ${newSchedule.courseName} (${newSchedule.room})`,
+      `Jadwal baru ditambahkan: ${saved.courseName}${saved.room ? ` (${saved.room})` : ''}`,
       'normal'
     );
 
-    syncToCustomApi('/schedules', 'POST', newSchedule);
-
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
-        await setDoc(doc(db, 'schedules', newId), newSchedule);
+        await setDoc(doc(db, 'schedules', saved.id), saved);
       } catch (err) {
         console.warn('Schedule sync failed:', err);
       }
     }
+    return true;
   };
 
   const updateSchedule = async (id: string, item: Partial<ScheduleItem>) => {
-    const updated = schedules.map(s => (s.id === id ? { ...s, ...item, updatedAt: new Date().toISOString() } : s));
+    const existing = schedules.find(s => s.id === id);
+    if (!existing) return false;
+    let merged: ScheduleItem = { ...existing, ...item, updatedAt: new Date().toISOString() };
+    if (usesCustomApi) {
+      const result = await syncToCustomApi(`/schedules/${encodeURIComponent(id)}`, 'PUT', toApiSchedule(merged));
+      if (!result.ok) return false;
+      if (result.data) merged = normalizeSchedule(result.data);
+    }
+
+    const updated = schedules.map(s => (s.id === id ? merged : s));
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
-
-    syncToCustomApi(`/schedules/${id}`, 'PUT', item);
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
@@ -405,14 +436,15 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Schedule update failed:', err);
       }
     }
+    return true;
   };
 
   const deleteSchedule = async (id: string) => {
+    if (usesCustomApi && !(await syncToCustomApi(`/schedules/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
+
     const updated = schedules.filter(s => s.id !== id);
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
-
-    syncToCustomApi(`/schedules/${id}`, 'DELETE');
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
@@ -421,6 +453,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Schedule delete failed:', err);
       }
     }
+    return true;
   };
 
   const addReminder = async (item: Omit<ReminderItem, 'id' | 'createdAt'>) => {
@@ -432,25 +465,31 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isCompleted: false,
     };
 
-    const updated = [newReminder, ...reminders];
+    let saved = newReminder;
+    if (usesCustomApi) {
+      const result = await syncToCustomApi('/reminders', 'POST', toApiReminder(newReminder));
+      if (!result.ok) return false;
+      if (result.data) saved = normalizeReminder(result.data);
+    }
+
+    const updated = [saved, ...reminders];
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
     notificationService.dispatchNotification(
-      `Pengingat Ditambahkan: ${newReminder.title}`,
-      `Batas Waktu: ${new Date(newReminder.deadline).toLocaleDateString('id-ID')}`,
+      `Pengingat Ditambahkan: ${saved.title}`,
+      `Batas Waktu: ${new Date(saved.deadline).toLocaleDateString('id-ID')}`,
       'reminder'
     );
 
-    syncToCustomApi('/reminders', 'POST', newReminder);
-
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
-        await setDoc(doc(db, 'reminders', newId), newReminder);
+        await setDoc(doc(db, 'reminders', saved.id), saved);
       } catch (err) {
         console.warn('Reminder sync failed:', err);
       }
     }
+    return true;
   };
 
   const toggleReminderComplete = (id: string) => {
@@ -460,7 +499,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const item = updated.find(r => r.id === id);
     if (item) {
-      syncToCustomApi(`/reminders/${id}`, 'PUT', { isCompleted: item.isCompleted }, { silent: true });
+      syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'PUT', toApiReminder(item), { silent: true });
     }
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
@@ -473,17 +512,24 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const updateReminder = async (id: string, item: Partial<ReminderItem>) => {
-    const updated = reminders.map(r => (r.id === id ? { ...r, ...item } : r));
+    const existing = reminders.find(r => r.id === id);
+    if (!existing) return false;
+    let merged: ReminderItem = { ...existing, ...item };
+    if (usesCustomApi) {
+      const result = await syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'PUT', toApiReminder(merged));
+      if (!result.ok) return false;
+      if (result.data) merged = normalizeReminder(result.data);
+    }
+
+    const updated = reminders.map(r => (r.id === id ? merged : r));
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
     notificationService.dispatchNotification(
       'Pengingat Diperbarui',
-      `Perubahan tersimpan pada pengingat: ${item.title || 'Agenda Kelas'}`,
+      `Perubahan tersimpan pada pengingat: ${merged.title || 'Agenda Kelas'}`,
       'reminder'
     );
-
-    syncToCustomApi(`/reminders/${id}`, 'PUT', item);
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
@@ -492,14 +538,15 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Reminder update failed:', err);
       }
     }
+    return true;
   };
 
   const deleteReminder = async (id: string) => {
+    if (usesCustomApi && !(await syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
+
     const updated = reminders.filter(r => r.id !== id);
     setReminders(updated);
     offlineStorage.saveReminders(updated);
-
-    syncToCustomApi(`/reminders/${id}`, 'DELETE');
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
       try {
@@ -508,6 +555,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.warn('Reminder delete error:', err);
       }
     }
+    return true;
   };
 
   const syncWithCloud = async () => {
@@ -541,11 +589,17 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
    * Sends a change to the private API. The screen has already been updated, so a failure must be
    * reported: otherwise the change silently disappears on the next reload.
    * `silent` is for background updates the user did not explicitly ask to save.
+   * Resolves with the outcome and the row the server answered with (unwrapped from { data }).
    */
-  const syncToCustomApi = async (path: string, method: string, body?: unknown, options?: { silent?: boolean }) => {
-    if (dbConfig.provider !== 'custom_api' || !dbConfig.apiBaseUrl) return;
+  const syncToCustomApi = async (
+    path: string,
+    method: string,
+    body?: unknown,
+    options?: { silent?: boolean }
+  ): Promise<{ ok: boolean; data?: unknown }> => {
+    if (dbConfig.provider !== 'custom_api' || !dbConfig.apiBaseUrl) return { ok: true };
     const cleanBase = dataService.normalizeUrl(dbConfig.apiBaseUrl);
-    if (!cleanBase) return;
+    if (!cleanBase) return { ok: true };
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
     const report = (reason: string) => {
@@ -553,7 +607,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (options?.silent) return;
       notificationService.dispatchNotification(
         'Gagal Menyimpan ke Server',
-        `${reason}. Perubahan ini hanya tersimpan di perangkat ini dan bisa hilang saat dimuat ulang.`,
+        `${reason}. Perubahan ini belum tersimpan.`,
         'urgent'
       );
     };
@@ -577,14 +631,18 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         signal: controller.signal,
       });
       if (!res.ok) {
-        const detail = await res.json().then(
-          (json: { message?: unknown; error?: unknown }) => json?.message ?? json?.error,
-          () => undefined
-        );
-        report(`Server menolak ${method} ${cleanPath} (HTTP ${res.status}${typeof detail === 'string' ? `: ${detail}` : ''})`);
+        const responseBody: unknown = await res.json().catch(() => null);
+        const detail = extractApiErrorDetail(responseBody);
+        // Full exchange for debugging a rejected save. The token is in the headers, so it is not logged.
+        console.warn(`Custom API ${method} ${cleanPath} rejected`, { sent: body, received: responseBody });
+        report(`Server menolak ${method} ${cleanPath} (HTTP ${res.status}${detail ? `: ${detail}` : ''})`);
+        return { ok: false };
       }
+      const json: any = await res.json().catch(() => null);
+      return { ok: true, data: json && typeof json === 'object' && 'data' in json ? json.data : json };
     } catch {
       report(`Server tidak bisa dihubungi untuk ${method} ${cleanPath}`);
+      return { ok: false };
     } finally {
       clearTimeout(timeout);
     }
@@ -749,17 +807,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       'normal'
     );
 
-    // Sync to Firestore users collection & remove from pending_approvals
+    // Remove from the pending_approvals queue
     if (isOnline) {
       deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
-      setDoc(doc(db, 'users', approvedMember.id), {
-        email: approvedMember.email.toLowerCase(),
-        displayName: approvedMember.name,
-        role: approvedMember.role,
-        nim: approvedMember.nim,
-        status: 'active',
-        approvedAt: new Date().toISOString(),
-      }, { merge: true }).catch(e => console.warn('Firestore approval notice:', e));
     }
 
     // Refresh if the approved user is current user

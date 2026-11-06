@@ -32,6 +32,7 @@ import {
   getGoogleCalendarUrlForDateSchedule,
 } from '../lib/calendarUtils';
 import { getGoogleCalendarUrlForSchedule, downloadICSFile, generateSchedulesICS } from '../lib/calendarSync';
+import { formatScheduleTime } from '../lib/dataService';
 
 interface CalendarScheduleViewProps {
   schedules: ScheduleItem[];
@@ -611,7 +612,7 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
+                      <span className="empty:hidden text-[10px] font-mono font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
                         {item.courseCode}
                       </span>
                       {item.divisionName && (
@@ -652,7 +653,7 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
 
                   <div className="text-right shrink-0">
                     <span className="text-xs font-mono font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-xl border border-slate-200 inline-block">
-                      {item.startTime} - {item.endTime}
+                      {formatScheduleTime(item)}
                     </span>
                     <span className="block text-[11px] font-medium text-amber-800 mt-1">
                       {dateString}

@@ -50,7 +50,7 @@ import {
 import { DAYS_OF_WEEK, ASSET_IMAGES } from '../lib/seedData';
 import { generateSchedulesICS, downloadICSFile } from '../lib/calendarSync';
 import { notificationService } from '../lib/notifications';
-import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
+import { dataService, DatabaseProviderType, AuthHeaderMode, formatScheduleTime, toDatetimeLocalValue } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
 import { MembersErrorBanner } from './MembersErrorBanner';
 import { PendingApprovalsPanel } from './PendingApprovalsPanel';
@@ -243,7 +243,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     if (!annTitle.trim() || !annContent.trim()) return;
 
     setIsSubmittingAnn(true);
-    await addAnnouncement({
+    const saved = await addAnnouncement({
       title: annTitle,
       content: annContent,
       priority: annPriority,
@@ -253,6 +253,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       attachmentName: annAttachment.trim() ? annAttachment : undefined,
       attachmentUrl: annAttachment.trim() ? '#' : undefined,
     });
+    if (!saved) {
+      setIsSubmittingAnn(false);
+      return;
+    }
 
     setAnnTitle('');
     setAnnContent('');
@@ -264,7 +268,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     e.preventDefault();
     if (!schedCourse.trim() || !schedCode.trim()) return;
 
-    await addSchedule({
+    const saved = await addSchedule({
       courseName: schedCourse,
       courseCode: schedCode,
       divisionName: schedDivision,
@@ -278,6 +282,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       classType: schedType,
       notes: schedNotes,
     });
+    if (!saved) return;
 
     setSchedCourse('');
     setSchedCode('');
@@ -305,7 +310,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     e.preventDefault();
     if (!editingSchedule) return;
 
-    await updateSchedule(editingSchedule.id, {
+    const saved = await updateSchedule(editingSchedule.id, {
       courseName: editSchedCourse,
       courseCode: editSchedCode,
       divisionName: editSchedDivision,
@@ -319,6 +324,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       classType: editSchedType,
       notes: editSchedNotes,
     });
+    if (!saved) return;
 
     setEditingSchedule(null);
   };
@@ -327,7 +333,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     e.preventDefault();
     if (!remTitle.trim()) return;
 
-    await addReminder({
+    const saved = await addReminder({
       title: remTitle,
       courseName: remCourse,
       deadline: remDeadline,
@@ -336,6 +342,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       description: remDesc || 'Tenggat waktu resmi dari pengurus kelas.',
       isCompleted: false,
     });
+    if (!saved) return;
 
     setRemTitle('');
     setRemDesc('');
@@ -346,7 +353,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     setEditingReminder(rem);
     setEditRemTitle(rem.title);
     setEditRemCourse(rem.courseName);
-    setEditRemDeadline(rem.deadline);
+    setEditRemDeadline(toDatetimeLocalValue(rem.deadline));
     setEditRemType(rem.reminderType);
   };
 
@@ -354,12 +361,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     e.preventDefault();
     if (!editingReminder) return;
 
-    await updateReminder(editingReminder.id, {
+    const saved = await updateReminder(editingReminder.id, {
       title: editRemTitle,
       courseName: editRemCourse,
       deadline: editRemDeadline,
       reminderType: editRemType,
     });
+    if (!saved) return;
 
     setEditingReminder(null);
   };
@@ -1045,9 +1053,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                           <td className="py-3 px-3 font-sans font-bold text-amber-800">
                             {DAYS_OF_WEEK.find((d) => d.value === sch.dayOfWeek)?.label}
                           </td>
-                          <td className="py-3 px-3">{sch.startTime} - {sch.endTime}</td>
+                          <td className="py-3 px-3">{formatScheduleTime(sch)}</td>
                           <td className="py-3 px-3 font-sans font-semibold text-slate-900">
-                            {sch.courseName} <span className="text-[10px] text-slate-400 font-mono">({sch.courseCode})</span>
+                            {sch.courseName} {sch.courseCode && <span className="text-[10px] text-slate-400 font-mono">({sch.courseCode})</span>}
                           </td>
                           <td className="py-3 px-3 font-sans text-slate-600">{sch.lecturer}</td>
                           <td className="py-3 px-3 font-sans text-slate-700">{sch.room}</td>

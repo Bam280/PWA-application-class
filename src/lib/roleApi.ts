@@ -1,6 +1,7 @@
 import { auth } from './firebase';
 import { StudentMember, UserRole } from '../types';
 import { ASSET_IMAGES } from './seedData';
+import { extractApiErrorDetail } from './dataService';
 
 /**
  * Client for the role-management API.
@@ -245,8 +246,7 @@ async function request(method: string, path: string, body?: unknown, token?: str
   }
 
   if (!res.ok) {
-    const serverMsg =
-      data && typeof data === 'object' ? (pick(data as Record<string, unknown>, 'message', 'error') as string) : '';
+    const serverMsg = extractApiErrorDetail(data);
     const kind: RoleApiErrorKind =
       res.status === 401
         ? 'unauthorized'
