@@ -31,6 +31,7 @@ import {
 } from '../lib/dataService';
 import { roleApi, toStudentMember, RoleApiError, isRoleApiConfigured } from '../lib/roleApi';
 import { ASSET_IMAGES } from '../lib/seedData';
+import { ACCESS_REQUESTS_COLLECTION, ACCESS_REQUEST_RETRY_MS, firestoreErrorCode, toPendingApprovals } from '../lib/accessRequests';
 
 interface ClassDataContextType {
   schedules: ScheduleItem[];
@@ -39,6 +40,8 @@ interface ClassDataContextType {
   readReceipts: ReadReceipt[];
   classMembers: StudentMember[];
   pendingApprovals: PendingUserApproval[];
+  /** Why the queue could not be read; the list is not trustworthy while this is set. */
+  approvalsError: string | null;
   approvePendingUser: (id: string, role: UserRole, nim: string) => Promise<boolean>;
   rejectPendingUser: (id: string) => Promise<boolean>;
   loading: boolean;
@@ -82,9 +85,8 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [readReceipts, setReadReceipts] = useState<ReadReceipt[]>(() => offlineStorage.getReadReceipts());
   const [classMembers, setClassMembers] = useState<StudentMember[]>([]);
   const [membersError, setMembersError] = useState<string | null>(null);
-  const [pendingApprovals, setPendingApprovals] = useState<PendingUserApproval[]>(() =>
-    offlineStorage.getPendingApprovals()
-  );
+  const [pendingApprovals, setPendingApprovals] = useState<PendingUserApproval[]>([]);
+  const [approvalsError, setApprovalsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const isAdminUser = user?.role === 'super_admin' || user?.role === 'class_admin';
   // The API and Firestore reject calls without a session, so wait for a signed-in, approved user.
@@ -106,14 +108,6 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Reminder ticks the server has not confirmed (a member may not be allowed to update reminders).
   // Without this, each refresh would undo the tick.
   const completionOverrides = useRef(new Map<string, boolean>());
-
-  useEffect(() => {
-    const handleApprovalsChange = () => {
-      setPendingApprovals(offlineStorage.getPendingApprovals());
-    };
-    window.addEventListener('pending-approvals-changed', handleApprovalsChange);
-    return () => window.removeEventListener('pending-approvals-changed', handleApprovalsChange);
-  }, []);
 
   const reloadMembers = useCallback(async () => {
     if (!isAdminUser) {
@@ -147,6 +141,42 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     reloadMembers();
   }, [reloadMembers, user?.id]);
+
+  // Access requests waiting for approval, live from Firestore. A refused read is retried, so the
+  // list recovers by itself once the rules are published.
+  useEffect(() => {
+    setPendingApprovals([]);
+    setApprovalsError(null);
+    if (!canLoadData || !isAdminUser) return;
+    if (!isOnline) {
+      setApprovalsError('Antrean permintaan akses tidak bisa dimuat saat offline.');
+      return;
+    }
+    let unsubscribe = () => {};
+    let retryTimer: number | undefined;
+    const listen = () => {
+      unsubscribe = onSnapshot(
+        collection(db, ACCESS_REQUESTS_COLLECTION),
+        (snapshot) => {
+          setPendingApprovals(toPendingApprovals(snapshot.docs.map(d => ({ id: d.id, data: d.data() }))));
+          setApprovalsError(null);
+        },
+        (err) => {
+          console.warn('Pending approvals listener notice:', err.message);
+          setPendingApprovals([]);
+          setApprovalsError(
+            `Antrean permintaan akses tidak bisa dibaca, jadi permintaan yang masuk belum terlihat. Pastikan isi firestore.rules sudah di-publish di Firebase Console. Aplikasi mencoba lagi otomatis. (Kode: ${firestoreErrorCode(err)})`
+          );
+          retryTimer = window.setTimeout(listen, ACCESS_REQUEST_RETRY_MS);
+        }
+      );
+    };
+    listen();
+    return () => {
+      unsubscribe();
+      window.clearTimeout(retryTimer);
+    };
+  }, [authUid, canLoadData, isAdminUser, isOnline]);
 
   // Firestore & Custom API listeners when online
   useEffect(() => {
@@ -351,47 +381,14 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     );
 
-    // Pending approvals real-time listener for Super Admin
-    let approvalsUnsub = () => {};
-    if (isAdminUser && authUid) {
-      try {
-        approvalsUnsub = onSnapshot(
-          collection(db, 'pending_approvals'),
-          (snapshot) => {
-            if (!snapshot.empty) {
-              const remoteList: PendingUserApproval[] = snapshot.docs.map(d => ({
-                id: d.id,
-                uid: d.data().uid || d.id,
-                email: d.data().email || '',
-                displayName: d.data().displayName || '',
-                avatarUrl: d.data().avatarUrl || undefined,
-                requestedAt: d.data().requestedAt || new Date().toISOString(),
-                status: 'pending',
-              }));
-              for (const req of remoteList) {
-                offlineStorage.addPendingApproval(req);
-              }
-              setPendingApprovals(offlineStorage.getPendingApprovals());
-            }
-          },
-          (err) => {
-            console.warn('Pending approvals listener notice:', err.message);
-          }
-        );
-      } catch (e) {
-        console.warn('Error setting up pending approvals listener:', e);
-      }
-    }
-
     return () => {
       cancelled = true;
       stopAutoRefresh();
       schedUnsub();
       annUnsub();
       remUnsub();
-      approvalsUnsub();
     };
-  }, [authUid, canLoadData, isOnline, isAdminUser, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
+  }, [authUid, canLoadData, isOnline, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
   /** Save through the private API first, so the screen only ever shows what the server accepted. */
   const usesCustomApi = dbConfig.provider === 'custom_api' && Boolean(dbConfig.apiBaseUrl);
@@ -896,8 +893,19 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  /** Removes a request from the queue; the listener then updates the list. Tells the admin if Firestore refused. */
+  const closeAccessRequest = async (id: string, failureTitle: string): Promise<boolean> => {
+    try {
+      await deleteDoc(doc(db, ACCESS_REQUESTS_COLLECTION, id));
+      return true;
+    } catch (err) {
+      notificationService.dispatchNotification(failureTitle, `Permintaan masih ada di antrean. (Kode: ${firestoreErrorCode(err)})`, 'urgent');
+      return false;
+    }
+  };
+
   const approvePendingUser = async (id: string, newRole: UserRole, nim: string): Promise<boolean> => {
-    const target = offlineStorage.getPendingApprovals().find(p => p.id === id);
+    const target = pendingApprovals.find(p => p.id === id);
     if (!target) return false;
 
     // The role database decides access: the request only counts as approved once the API saved it.
@@ -919,27 +927,19 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
     }
 
-    const approvedMember = offlineStorage.approveUserAccess(id, newRole, nim, user?.displayName || 'Super Admin');
-    if (!approvedMember) return false;
-
-    setPendingApprovals(offlineStorage.getPendingApprovals());
+    await closeAccessRequest(id, 'Akses Disetujui, Antrean Belum Terhapus');
     await reloadMembers();
 
     notificationService.dispatchNotification(
       'Akses User Disetujui',
       alreadyRegistered
-        ? `${approvedMember.email} sudah terdaftar di database, sehingga role-nya mengikuti data yang ada.`
-        : `${approvedMember.name} (${approvedMember.email}) disetujui sebagai ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
+        ? `${target.email} sudah terdaftar di database, sehingga role-nya mengikuti data yang ada.`
+        : `${target.displayName} (${target.email}) disetujui sebagai ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
       'normal'
     );
 
-    // Remove from the pending_approvals queue
-    if (isOnline) {
-      deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
-    }
-
     // Refresh if the approved user is current user
-    if (user && user.email.toLowerCase() === approvedMember.email.toLowerCase()) {
+    if (user && user.email.toLowerCase() === target.email.toLowerCase()) {
       await refreshAccess();
     }
 
@@ -947,11 +947,11 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const rejectPendingUser = async (id: string): Promise<boolean> => {
-    offlineStorage.rejectUserAccess(id, user?.displayName || 'Super Admin');
-    setPendingApprovals(offlineStorage.getPendingApprovals());
-    if (isOnline) {
-      deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
+    if (!isOnline) {
+      notificationService.dispatchNotification('Gagal Menolak Akses', 'Anda sedang offline. Coba lagi saat tersambung.', 'urgent');
+      return false;
     }
+    if (!(await closeAccessRequest(id, 'Gagal Menolak Akses'))) return false;
     notificationService.dispatchNotification('Akses Ditolak', 'Permintaan akses user SSO telah ditolak.', 'normal');
     return true;
   };
@@ -988,6 +988,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         readReceipts,
         classMembers,
         pendingApprovals,
+        approvalsError,
         approvePendingUser,
         rejectPendingUser,
         loading,

@@ -64,7 +64,7 @@ Field opsional yang ikut ditampilkan bila ada: `avatar_url`, `attendance_rate`, 
 
 | Status | Arti di aplikasi |
 |---|---|
-| `GET /me` → `404` atau `403` | Email **belum terdaftar** / tidak aktif → user otomatis di-logout dengan pesan "Email … belum terdaftar". |
+| `GET /me` → `404` atau `403` | Email **belum terdaftar** / tidak aktif → login Google masuk antrean persetujuan, login password ditolak (bagian 8). |
 | `401` | Token tidak valid → user diminta login ulang. |
 | `403` (endpoint lain) | Tidak punya izin → pesan "Anda tidak memiliki izin…". |
 | `409` pada `POST /users` | Email sudah terdaftar → form tetap terbuka dengan pesan dari field `message`. |
@@ -222,6 +222,10 @@ Konsekuensinya:
   `isAdmin()`, atau akun dengan custom claim `role` (bagian 4). Super admin yang hanya ada di database dan belum punya
   claim akan melihat antrean kosong.
 - API tetap wajib menolak token dengan `email_verified` bernilai `false` (bagian 3).
+- **`firestore.rules` tidak ikut aktif saat PR di-merge atau aplikasi di-deploy.** Setiap kali file ini berubah, publish
+  manual: Firebase Console → Firestore → pilih database `ai-studio-c85d0a61-…` → Security → tempel isi file → **Publish**.
+  Tanpa bagian `pending_approvals`, permintaan akun baru ditolak dan tidak tersimpan. Layar menunggu dan panel Super Admin
+  menampilkan pesan dengan `Kode: permission-denied`.
 
 ## 9. Arti kode error di halaman login
 

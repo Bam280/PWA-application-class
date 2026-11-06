@@ -15,12 +15,14 @@ import { PendingUserApproval, UserRole, ROLE_DEFINITIONS } from '../types';
 
 interface PendingApprovalsPanelProps {
   pendingApprovals: PendingUserApproval[];
+  error?: string | null;
   onApprove: (id: string, role: UserRole, nim: string) => Promise<boolean>;
   onReject: (id: string) => Promise<boolean>;
 }
 
 export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
   pendingApprovals,
+  error,
   onApprove,
   onReject,
 }) => {
@@ -30,11 +32,7 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
   const [failedEmail, setFailedEmail] = useState<string | null>(null);
 
   const getRole = (id: string): UserRole => formData[id]?.role || 'class_member';
-  const getNim = (id: string, email: string): string => {
-    if (formData[id]?.nim !== undefined) return formData[id].nim;
-    // Suggest default NIM based on email or random sequence
-    return `ODP-IT-2026-${Math.floor(100 + Math.random() * 900)}`;
-  };
+  const getNim = (id: string): string => formData[id]?.nim ?? '';
 
   const handleRoleChange = (id: string, role: UserRole) => {
     setFormData(prev => ({
@@ -55,7 +53,7 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
       setProcessingId(p.id);
       setFailedEmail(null);
       const role = getRole(p.id);
-      const nim = getNim(p.id, p.email);
+      const nim = getNim(p.id);
       const approved = await onApprove(p.id, role, nim);
       if (!approved) setFailedEmail(p.email);
     } finally {
@@ -106,8 +104,15 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <span className="break-words min-w-0">{error}</span>
+        </div>
+      )}
+
       {/* Pending List or Empty State */}
-      {pendingApprovals.length === 0 ? (
+      {error && pendingApprovals.length === 0 ? null : pendingApprovals.length === 0 ? (
         <div className="p-8 sm:p-12 text-center bg-white border border-slate-200 rounded-3xl space-y-3 shadow-xs">
           <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto border border-emerald-200">
             <Check className="w-6 h-6" />
@@ -124,7 +129,7 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
           {pendingApprovals.map((p) => {
             const isProcessing = processingId === p.id;
             const currentRole = getRole(p.id);
-            const currentNim = getNim(p.id, p.email);
+            const currentNim = getNim(p.id);
 
             return (
               <div

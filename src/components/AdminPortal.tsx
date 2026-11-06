@@ -70,6 +70,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     readReceipts,
     classMembers,
     pendingApprovals,
+    approvalsError,
     approvePendingUser,
     rejectPendingUser,
     dbConfig,
@@ -1525,6 +1526,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
             {settingsTab === 'approvals' && isSuperAdmin && (
               <PendingApprovalsPanel
                 pendingApprovals={pendingApprovals}
+                error={approvalsError}
                 onApprove={approvePendingUser}
                 onReject={rejectPendingUser}
               />
