@@ -59,7 +59,7 @@ const AccessErrorScreen: React.FC = () => {
 };
 
 const MainApp: React.FC = () => {
-  const { user, firebaseUser, role, loading, accessError, refreshAccess, signOut } = useAuth();
+  const { user, firebaseUser, role, loading, accessError, accessRequest, refreshAccess, signOut } = useAuth();
   const isAdmin = role === 'super_admin' || role === 'class_admin';
   // Desktop-sized screens get the admin portal; phones and tablets get the class app.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -123,6 +123,7 @@ const MainApp: React.FC = () => {
     return (
       <PendingApprovalView
         user={user}
+        accessRequest={accessRequest}
         onRefresh={refreshAccess}
         onSignOut={signOut}
       />

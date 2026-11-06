@@ -8,12 +8,19 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { ASSET_IMAGES } from '../lib/seedData';
 import { roleApi, RoleApiError, RoleApiUser } from '../lib/roleApi';
+import { ACCESS_REQUESTS_COLLECTION, ACCESS_REQUEST_RETRY_MS, firestoreErrorCode } from '../lib/accessRequests';
+
+/** Whether this account's request really reached the queue Super Admins read. */
+export interface AccessRequestState {
+  status: 'sending' | 'sent' | 'failed';
+  code?: string;
+}
 
 interface AuthContextType {
   /** Signed-in user with a role confirmed by the role API or local resolution; null when signed out. */
@@ -29,6 +36,7 @@ interface AuthContextType {
    * Set when Firebase sign-in succeeded but the role could not be loaded and no cached role exists.
    */
   accessError: string | null;
+  accessRequest: AccessRequestState;
   /** Re-asks the role API or resolves access for the current user. */
   refreshAccess: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -154,8 +162,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   // Ignores results of an older role lookup when a newer one (or a sign-out) has started.
   const accessRequestId = useRef(0);
-  // Uid whose access request was already queued this session; also marks "on the waiting screen".
+  // Uid currently on the waiting screen.
   const pendingUidRef = useRef<string | null>(null);
+  // Uid whose request is confirmed to be in the queue.
+  const filedUidRef = useRef<string | null>(null);
+  const nextFilingAt = useRef(0);
+  const [accessRequest, setAccessRequest] = useState<AccessRequestState>({ status: 'sending' });
 
   // Listen to network status changes
   useEffect(() => {
@@ -172,6 +184,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('offline', handleStatus);
       window.removeEventListener('offline-status-changed', handleStatus);
     };
+  }, []);
+
+  /**
+   * Stores the request in the queue Super Admins read. The waiting screen re-checks every 5s: a stored
+   * request is not filed again (a rejected one would reappear within seconds), a refused one is retried.
+   */
+  const fileAccessRequest = useCallback(async (fbUser: User, email: string, displayName: string) => {
+    if (filedUidRef.current === fbUser.uid || Date.now() < nextFilingAt.current) return;
+    nextFilingAt.current = Date.now() + ACCESS_REQUEST_RETRY_MS;
+    try {
+      const requestDoc = doc(db, ACCESS_REQUESTS_COLLECTION, fbUser.uid);
+      // Only admins may change a stored request, so writing over one would be refused.
+      if (!(await getDoc(requestDoc)).exists()) {
+        await setDoc(requestDoc, {
+          id: fbUser.uid,
+          uid: fbUser.uid,
+          email,
+          displayName,
+          avatarUrl: fbUser.photoURL || null,
+          requestedAt: new Date().toISOString(),
+          status: 'pending',
+        });
+      }
+      filedUidRef.current = fbUser.uid;
+      setAccessRequest({ status: 'sent' });
+    } catch (err) {
+      console.error('Access request was not saved:', err);
+      setAccessRequest({ status: 'failed', code: firestoreErrorCode(err) });
+    }
   }, []);
 
   /**
@@ -204,30 +245,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const email = (fbUser.email || '').trim().toLowerCase();
       const displayName = fbUser.displayName || email.split('@')[0];
 
-      // The waiting screen re-checks every 5s; only the first check may file the request,
-      // otherwise a rejected request would reappear within seconds.
-      if (pendingUidRef.current !== fbUser.uid) {
-        pendingUidRef.current = fbUser.uid;
-        offlineStorage.addPendingApproval({
-          uid: fbUser.uid,
-          email,
-          displayName,
-          avatarUrl: fbUser.photoURL || undefined,
-        });
-        setDoc(
-          doc(db, 'pending_approvals', fbUser.uid),
-          {
-            id: fbUser.uid,
-            uid: fbUser.uid,
-            email,
-            displayName,
-            avatarUrl: fbUser.photoURL || null,
-            requestedAt: new Date().toISOString(),
-            status: 'pending',
-          },
-          { merge: true }
-        ).catch(() => undefined); // Already queued (only admins may update), or offline.
-      }
+      pendingUidRef.current = fbUser.uid;
+      fileAccessRequest(fbUser, email, displayName);
 
       const pendingAccess: RoleApiUser = {
         id: fbUser.uid,
@@ -255,6 +274,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       pendingUidRef.current = null;
+      filedUidRef.current = null;
+      nextFilingAt.current = 0;
       writeAccessCache(fbUser.uid, access);
       setUser(buildProfile(fbUser, access, 'active'));
       setRoleFromCache(false);
@@ -309,7 +330,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       if (requestId === accessRequestId.current) setResolvingAccess(false);
     }
-  }, []);
+  }, [fileAccessRequest]);
 
   // Firebase Auth is the single source of truth for who is signed in.
   useEffect(() => {
@@ -323,6 +344,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         accessRequestId.current++;
         pendingUidRef.current = null;
+        filedUidRef.current = null;
+        nextFilingAt.current = 0;
+        setAccessRequest({ status: 'sending' });
         setUser(null);
         setAccessError(null);
         setRoleFromCache(false);
@@ -414,6 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authError,
         clearAuthError,
         accessError,
+        accessRequest,
         refreshAccess,
         signInWithGoogle,
         signInWithEmail,

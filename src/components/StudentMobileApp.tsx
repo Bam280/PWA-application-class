@@ -77,6 +77,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     reminders,
     classMembers,
     pendingApprovals,
+    approvalsError,
     approvePendingUser,
     rejectPendingUser,
     dbConfig,
@@ -1112,6 +1113,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                 <div className="space-y-3">
                   <PendingApprovalsPanel
                     pendingApprovals={pendingApprovals}
+                    error={approvalsError}
                     onApprove={approvePendingUser}
                     onReject={rejectPendingUser}
                   />

@@ -11,15 +11,18 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { AccessRequestState } from '../context/AuthContext';
 
 interface PendingApprovalViewProps {
   user: UserProfile;
+  accessRequest: AccessRequestState;
   onRefresh: () => Promise<void>;
   onSignOut: () => Promise<void>;
 }
 
 export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
   user,
+  accessRequest,
   onRefresh,
   onSignOut,
 }) => {
@@ -90,9 +93,21 @@ export const PendingApprovalView: React.FC<PendingApprovalViewProps> = ({
             Akun anda belum terdaftar di dalam kelas, mohon tunggu sampai akun anda disetujui.
           </h2>
 
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Permintaan akses akun Google Anda telah dikirimkan ke <strong>Super Admin</strong>. Halaman ini akan otomatis membuka akses kelas saat akun Anda telah disetujui.
-          </p>
+          {accessRequest.status === 'failed' ? (
+            <p role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 leading-relaxed break-words">
+              Permintaan akses belum terkirim ke <strong>Super Admin</strong>. Aplikasi mencoba lagi otomatis. Jika tetap gagal, hubungi admin. (Kode: {accessRequest.code})
+            </p>
+          ) : (
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {accessRequest.status === 'sent' ? (
+                <>
+                  Permintaan akses akun Google Anda telah dikirimkan ke <strong>Super Admin</strong>. Halaman ini akan otomatis membuka akses kelas saat akun Anda telah disetujui.
+                </>
+              ) : (
+                'Mengirim permintaan akses akun Google Anda...'
+              )}
+            </p>
+          )}
         </div>
 
         {/* User Account Info Box */}
