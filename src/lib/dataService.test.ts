@@ -9,6 +9,7 @@ import {
   formatScheduleTime,
   toDatetimeLocalValue,
   sameApiRows,
+  describeScheduleChanges,
   extractArrayPayload,
   normalizeSchedule,
   normalizeAnnouncement,
@@ -193,4 +194,18 @@ test('sameApiRows ignores generated timestamps but sees real changes', () => {
   assert.equal(sameApiRows([row], [{ ...row, updatedAt: '2026-06-06T00:00:00Z' }]), true);
   assert.equal(sameApiRows([row], [{ ...row, title: 'B' }]), false);
   assert.equal(sameApiRows([row], []), false);
+});
+
+test('describeScheduleChanges reports edits and removals, and ignores new or unchanged rows', () => {
+  const a = normalizeSchedule({ id: 'a', title: 'Basis Data', day: 'Senin', time: '08:00', room: 'Lab 1' });
+  const b = normalizeSchedule({ id: 'b', title: 'Jaringan', day: 'Rabu', time: '10:00', room: 'Lab 2' });
+  const c = normalizeSchedule({ id: 'c', title: 'Sistem Operasi', day: 'Jumat', time: '13:00' });
+  const aMoved = normalizeSchedule({ id: 'a', title: 'Basis Data', day: 'Selasa', time: '09:00', room: 'Lab 1' });
+  const fresh = normalizeSchedule({ id: 'd', title: 'Baru', day: 'Kamis', time: '07:00' });
+
+  const { changed, removed } = describeScheduleChanges([a, b, c], [aMoved, c, fresh]);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].item.id, 'a');
+  assert.equal(changed[0].details, 'Hari: Senin → Selasa · Jam: 08:00 → 09:00');
+  assert.deepEqual(removed.map(r => r.id), ['b']);
 });

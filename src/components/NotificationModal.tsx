@@ -1,6 +1,12 @@
-import React from 'react';
-import { Bell, Check, X, ShieldAlert, Clock, AlertTriangle, Info } from 'lucide-react';
-import { notificationService, InAppNotification } from '../lib/notifications';
+import React, { useState } from 'react';
+import { Bell, BellRing, Check, X, ShieldAlert, Clock, AlertTriangle, Info } from 'lucide-react';
+import {
+  notificationService,
+  InAppNotification,
+  DeviceNotificationState,
+  formatNotificationTime,
+} from '../lib/notifications';
+import { DEVICE_STATE_HELP } from './PushPermissionPrompt';
 
 interface NotificationModalProps {
   isOpen: boolean;
@@ -9,15 +15,16 @@ interface NotificationModalProps {
 }
 
 export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, onClose, notifications }) => {
+  const [deviceState, setDeviceState] = useState<DeviceNotificationState>(() => notificationService.getDeviceState());
+
   if (!isOpen) return null;
 
-  const handleTestPush = async () => {
-    await notificationService.requestPushPermission();
-    notificationService.dispatchNotification(
-      'Uji Coba Push Notifikasi',
-      'Sistem notifikasi real-time UniClass Hub aktif dan tersinkronisasi!',
-      'normal'
-    );
+  const enableOrTest = async () => {
+    if (deviceState === 'granted') {
+      await notificationService.showOnDevice('Uji notifikasi', 'Notifikasi di perangkat ini berfungsi.');
+    } else {
+      setDeviceState(await notificationService.enableDeviceNotifications());
+    }
   };
 
   const getTypeIcon = (type: InAppNotification['type']) => {
@@ -64,12 +71,22 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
             <Check className="w-3.5 h-3.5" />
             Tandai semua dibaca
           </button>
-          <button
-            onClick={handleTestPush}
-            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shadow-2xs text-xs"
-          >
-            Uji Push Notif
-          </button>
+        </div>
+
+        {/* Device notifications */}
+        <div className="px-5 py-3 border-b border-slate-100 flex items-start justify-between gap-3 text-xs">
+          <p className="flex items-start gap-2 text-slate-600 leading-relaxed">
+            <BellRing className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
+            <span>{DEVICE_STATE_HELP[deviceState]}</span>
+          </p>
+          {(deviceState === 'default' || deviceState === 'granted') && (
+            <button
+              onClick={enableOrTest}
+              className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+            >
+              {deviceState === 'granted' ? 'Uji' : 'Aktifkan'}
+            </button>
+          )}
         </div>
 
         {/* List */}
@@ -94,7 +111,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
-                      <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{item.timestamp}</span>
+                      <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{formatNotificationTime(item.createdAt)}</span>
                     </div>
                     <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{item.body}</p>
                   </div>

@@ -27,6 +27,7 @@ import {
   toApiReminder,
   toApiSchedule,
   sameApiRows,
+  describeScheduleChanges,
 } from '../lib/dataService';
 import { roleApi, toStudentMember, RoleApiError, isRoleApiConfigured } from '../lib/roleApi';
 import { ASSET_IMAGES } from '../lib/seedData';
@@ -200,6 +201,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             completionOverrides.current.clear();
           }
           const seen = seenIds.current;
+          const hadScheduleBaseline = seen.schedules !== null;
 
           // The first list loaded is only a baseline, so opening the app does not announce every old row.
           const takeNew = <T extends { id: string }>(
@@ -219,24 +221,37 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             notificationService.dispatchNotification(
               `Pengumuman Baru: ${newAnns[0].title}`,
               newAnns[0].content.slice(0, 90),
-              newAnns[0].priority
+              newAnns[0].priority,
+              { alertDevice: true }
             );
           } else if (newAnns.length > 1) {
-            notificationService.dispatchNotification(`${newAnns.length} Pengumuman Baru`, 'Buka menu Berita untuk membacanya.', 'normal');
+            notificationService.dispatchNotification(`${newAnns.length} Pengumuman Baru`, 'Buka menu Berita untuk membacanya.', 'normal', { alertDevice: true });
           }
           if (newScheds.length === 1) {
-            notificationService.dispatchNotification('Jadwal Baru', newScheds[0].courseName, 'normal');
+            notificationService.dispatchNotification('Jadwal Baru', newScheds[0].courseName, 'normal', { alertDevice: true });
           } else if (newScheds.length > 1) {
-            notificationService.dispatchNotification(`${newScheds.length} Jadwal Baru`, 'Buka menu Jadwal untuk melihatnya.', 'normal');
+            notificationService.dispatchNotification(`${newScheds.length} Jadwal Baru`, 'Buka menu Jadwal untuk melihatnya.', 'normal', { alertDevice: true });
           }
           if (newRems.length === 1) {
             notificationService.dispatchNotification(
               `Pengingat Baru: ${newRems[0].title}`,
               `Batas Waktu: ${new Date(newRems[0].deadline).toLocaleDateString('id-ID')}`,
-              'reminder'
+              'reminder',
+              { alertDevice: true }
             );
           } else if (newRems.length > 1) {
-            notificationService.dispatchNotification(`${newRems.length} Pengingat Baru`, 'Buka menu Pengingat untuk melihatnya.', 'reminder');
+            notificationService.dispatchNotification(`${newRems.length} Pengingat Baru`, 'Buka menu Pengingat untuk melihatnya.', 'reminder', { alertDevice: true });
+          }
+
+          // Edits and removals by someone else. A user's own saves already updated the list on screen.
+          if (hadScheduleBaseline && customScheds && Array.isArray(customScheds)) {
+            const { changed, removed } = describeScheduleChanges(latest.current.schedules, customScheds);
+            for (const { item, details } of changed) {
+              notificationService.dispatchNotification(`Jadwal Berubah: ${item.courseName}`, details, 'important', { alertDevice: true });
+            }
+            for (const item of removed) {
+              notificationService.dispatchNotification(`Jadwal Dibatalkan: ${item.courseName}`, 'Jadwal ini sudah dihapus oleh admin.', 'important', { alertDevice: true });
+            }
           }
 
           // Only touch state when something changed, so an idle refresh does not re-render the app.
@@ -266,9 +281,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
       load();
 
-      // Background tabs do not poll; they catch up as soon as the user returns.
+      // Background tabs only poll when device notifications are on; otherwise they catch up on return.
       const timer = window.setInterval(() => {
-        if (!document.hidden) load();
+        if (!document.hidden || notificationService.getDeviceState() === 'granted') load();
       }, AUTO_REFRESH_MS);
       const onReturn = () => {
         if (!document.hidden && Date.now() - lastLoadAt > RETURN_REFRESH_MIN_GAP_MS) load();

@@ -266,7 +266,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schedCourse.trim() || !schedCode.trim()) return;
+    if (!schedCourse.trim()) return;
 
     const saved = await addSchedule({
       courseName: schedCourse,
@@ -831,7 +831,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     </label>
                     <input
                       type="text"
-                      required
                       placeholder="ODP-EAS-01"
                       value={schedCode}
                       onChange={(e) => setSchedCode(e.target.value)}
@@ -846,7 +845,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     </label>
                     <input
                       type="text"
-                      required
                       placeholder="Contoh: Bambang Wijaya, S.T., M.Kom."
                       value={schedLecturer}
                       onChange={(e) => setSchedLecturer(e.target.value)}
@@ -2281,7 +2279,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                 <label className="block text-slate-700 font-semibold mb-1">Kode Modul Sesi</label>
                 <input
                   type="text"
-                  required
                   value={editSchedCode}
                   onChange={(e) => setEditSchedCode(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono font-bold"
@@ -2292,7 +2289,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                 <label className="block text-slate-700 font-semibold mb-1">Nama Pembicara</label>
                 <input
                   type="text"
-                  required
                   value={editSchedLecturer}
                   onChange={(e) => setEditSchedLecturer(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
