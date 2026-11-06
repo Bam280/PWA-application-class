@@ -26,6 +26,7 @@ import {
   toApiAnnouncement,
   toApiReminder,
   toApiSchedule,
+  sameApiRows,
 } from '../lib/dataService';
 import { roleApi, toStudentMember, RoleApiError, isRoleApiConfigured } from '../lib/roleApi';
 import { ASSET_IMAGES } from '../lib/seedData';
@@ -64,6 +65,11 @@ interface ClassDataContextType {
 
 const ClassDataContext = createContext<ClassDataContextType | undefined>(undefined);
 
+// The API has no push channel, so open tabs ask for new data on a timer.
+const AUTO_REFRESH_MS = 30_000;
+// Returning to the tab refreshes right away, unless a refresh just happened.
+const RETURN_REFRESH_MIN_GAP_MS = 5_000;
+
 export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, firebaseUser, isOnline, refreshAccess } = useAuth();
   // Firestore rules require request.auth; listeners must wait for (and follow) the Firebase session.
@@ -84,6 +90,21 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const canLoadData = Boolean(authUid && user?.status === 'active');
   // Report a failed data load once per account instead of on every re-run of the loader.
   const loadFailureReportedFor = useRef<string | null>(null);
+  // Newest lists, for code that runs after an await and would otherwise see the lists from before it.
+  const latest = useRef({ schedules, announcements, reminders });
+  latest.current = { schedules, announcements, reminders };
+  // Counts finished saves. A refresh that overlaps a save may hold a list from before it, so it is dropped.
+  const saveVersion = useRef(0);
+  // Ids already seen per list, to tell which rows in a refresh are new. null = nothing loaded yet.
+  const seenIds = useRef<{
+    uid: string | null;
+    schedules: Set<string> | null;
+    announcements: Set<string> | null;
+    reminders: Set<string> | null;
+  } | null>(null);
+  // Reminder ticks the server has not confirmed (a member may not be allowed to update reminders).
+  // Without this, each refresh would undo the tick.
+  const completionOverrides = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     const handleApprovalsChange = () => {
@@ -140,43 +161,125 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // No session yet (or still waiting for approval): keep the local cache, every call would be rejected.
     if (!canLoadData) return;
     let cancelled = false;
+    let stopAutoRefresh = () => {};
 
     // If provider is custom_api, fetch records from the personal backend API
     if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
-      (async () => {
+      let loading = false;
+      let lastLoadAt = 0;
+
+      const load = async () => {
+        if (loading) return;
+        loading = true;
+        lastLoadAt = Date.now();
+        const versionAtStart = saveVersion.current;
         try {
           const [customScheds, customAnns, customRems] = await Promise.all([
             dataService.fetchFromCustomApi<ScheduleItem[]>('/schedules', dbConfig),
             dataService.fetchFromCustomApi<Announcement[]>('/announcements', dbConfig),
             dataService.fetchFromCustomApi<ReminderItem[]>('/reminders', dbConfig),
           ]);
-          if (cancelled) return;
+          if (cancelled || saveVersion.current !== versionAtStart) return;
 
           // fetchFromCustomApi answers null when the request failed; old data stays on screen.
-          if ((!customScheds || !customAnns || !customRems) && loadFailureReportedFor.current !== authUid) {
-            loadFailureReportedFor.current = authUid;
-            notificationService.dispatchNotification(
-              'Gagal Memuat Data dari Server',
-              'Sebagian jadwal, berita, atau pengingat tidak bisa dimuat. Yang tampil adalah data terakhir di perangkat ini.',
-              'important'
-            );
+          if (!customScheds || !customAnns || !customRems) {
+            if (loadFailureReportedFor.current !== authUid) {
+              loadFailureReportedFor.current = authUid;
+              notificationService.dispatchNotification(
+                'Gagal Memuat Data dari Server',
+                'Sebagian jadwal, berita, atau pengingat tidak bisa dimuat. Yang tampil adalah data terakhir di perangkat ini.',
+                'important'
+              );
+            }
+          } else {
+            loadFailureReportedFor.current = null;
           }
-          if (customScheds && Array.isArray(customScheds)) {
+
+          if (seenIds.current?.uid !== authUid) {
+            seenIds.current = { uid: authUid, schedules: null, announcements: null, reminders: null };
+            completionOverrides.current.clear();
+          }
+          const seen = seenIds.current;
+
+          // The first list loaded is only a baseline, so opening the app does not announce every old row.
+          const takeNew = <T extends { id: string }>(
+            list: T[] | null,
+            key: 'schedules' | 'announcements' | 'reminders'
+          ): T[] => {
+            if (!list || !Array.isArray(list)) return [];
+            const before = seen[key];
+            seen[key] = new Set(list.map(item => item.id));
+            return before ? list.filter(item => !before.has(item.id)) : [];
+          };
+          const newAnns = takeNew(customAnns, 'announcements');
+          const newScheds = takeNew(customScheds, 'schedules');
+          const newRems = takeNew(customRems, 'reminders');
+
+          if (newAnns.length === 1) {
+            notificationService.dispatchNotification(
+              `Pengumuman Baru: ${newAnns[0].title}`,
+              newAnns[0].content.slice(0, 90),
+              newAnns[0].priority
+            );
+          } else if (newAnns.length > 1) {
+            notificationService.dispatchNotification(`${newAnns.length} Pengumuman Baru`, 'Buka menu Berita untuk membacanya.', 'normal');
+          }
+          if (newScheds.length === 1) {
+            notificationService.dispatchNotification('Jadwal Baru', newScheds[0].courseName, 'normal');
+          } else if (newScheds.length > 1) {
+            notificationService.dispatchNotification(`${newScheds.length} Jadwal Baru`, 'Buka menu Jadwal untuk melihatnya.', 'normal');
+          }
+          if (newRems.length === 1) {
+            notificationService.dispatchNotification(
+              `Pengingat Baru: ${newRems[0].title}`,
+              `Batas Waktu: ${new Date(newRems[0].deadline).toLocaleDateString('id-ID')}`,
+              'reminder'
+            );
+          } else if (newRems.length > 1) {
+            notificationService.dispatchNotification(`${newRems.length} Pengingat Baru`, 'Buka menu Pengingat untuk melihatnya.', 'reminder');
+          }
+
+          // Only touch state when something changed, so an idle refresh does not re-render the app.
+          if (customScheds && Array.isArray(customScheds) && !sameApiRows(customScheds, latest.current.schedules)) {
             setSchedules(customScheds);
             offlineStorage.saveSchedules(customScheds);
           }
-          if (customAnns && Array.isArray(customAnns)) {
+          if (customAnns && Array.isArray(customAnns) && !sameApiRows(customAnns, latest.current.announcements)) {
             setAnnouncements(customAnns);
             offlineStorage.saveAnnouncements(customAnns);
           }
           if (customRems && Array.isArray(customRems)) {
-            setReminders(customRems);
-            offlineStorage.saveReminders(customRems);
+            const withTicks = customRems.map(r =>
+              completionOverrides.current.has(r.id) ? { ...r, isCompleted: completionOverrides.current.get(r.id) } : r
+            );
+            if (!sameApiRows(withTicks, latest.current.reminders)) {
+              setReminders(withTicks);
+              offlineStorage.saveReminders(withTicks);
+            }
           }
         } catch (e) {
           console.warn('Personal API data load notice:', e);
+        } finally {
+          loading = false;
         }
-      })();
+      };
+
+      load();
+
+      // Background tabs do not poll; they catch up as soon as the user returns.
+      const timer = window.setInterval(() => {
+        if (!document.hidden) load();
+      }, AUTO_REFRESH_MS);
+      const onReturn = () => {
+        if (!document.hidden && Date.now() - lastLoadAt > RETURN_REFRESH_MIN_GAP_MS) load();
+      };
+      document.addEventListener('visibilitychange', onReturn);
+      window.addEventListener('focus', onReturn);
+      stopAutoRefresh = () => {
+        window.clearInterval(timer);
+        document.removeEventListener('visibilitychange', onReturn);
+        window.removeEventListener('focus', onReturn);
+      };
     }
 
     // Schedules listener (for Firestore active provider or backup sync)
@@ -267,6 +370,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     return () => {
       cancelled = true;
+      stopAutoRefresh();
       schedUnsub();
       annUnsub();
       remUnsub();
@@ -294,8 +398,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!result.ok) return false;
       if (result.data) saved = normalizeAnnouncement(result.data);
     }
+    seenIds.current?.announcements?.add(saved.id);
 
-    const updated = [saved, ...announcements];
+    const updated = [saved, ...latest.current.announcements];
     setAnnouncements(updated);
     offlineStorage.saveAnnouncements(updated);
 
@@ -320,7 +425,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const deleteAnnouncement = async (id: string) => {
     if (usesCustomApi && !(await syncToCustomApi(`/announcements/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
 
-    const updated = announcements.filter(a => a.id !== id);
+    const updated = latest.current.announcements.filter(a => a.id !== id);
     setAnnouncements(updated);
     offlineStorage.saveAnnouncements(updated);
 
@@ -359,7 +464,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     offlineStorage.saveReadReceipt(receipt);
 
     // Increment read count in local announcement
-    const updatedAnnouncements = announcements.map(a =>
+    const updatedAnnouncements = latest.current.announcements.map(a =>
       a.id === announcementId ? { ...a, readCount: (a.readCount || 0) + 1 } : a
     );
     setAnnouncements(updatedAnnouncements);
@@ -394,8 +499,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!result.ok) return false;
       if (result.data) saved = normalizeSchedule(result.data);
     }
+    seenIds.current?.schedules?.add(saved.id);
 
-    const updated = [...schedules, saved];
+    const updated = [...latest.current.schedules, saved];
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
 
@@ -425,7 +531,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (result.data) merged = normalizeSchedule(result.data);
     }
 
-    const updated = schedules.map(s => (s.id === id ? merged : s));
+    const updated = latest.current.schedules.map(s => (s.id === id ? merged : s));
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
 
@@ -442,7 +548,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const deleteSchedule = async (id: string) => {
     if (usesCustomApi && !(await syncToCustomApi(`/schedules/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
 
-    const updated = schedules.filter(s => s.id !== id);
+    const updated = latest.current.schedules.filter(s => s.id !== id);
     setSchedules(updated);
     offlineStorage.saveSchedules(updated);
 
@@ -471,8 +577,9 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!result.ok) return false;
       if (result.data) saved = normalizeReminder(result.data);
     }
+    seenIds.current?.reminders?.add(saved.id);
 
-    const updated = [saved, ...reminders];
+    const updated = [saved, ...latest.current.reminders];
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
@@ -493,13 +600,16 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const toggleReminderComplete = (id: string) => {
-    const updated = reminders.map(r => (r.id === id ? { ...r, isCompleted: !r.isCompleted } : r));
+    const updated = latest.current.reminders.map(r => (r.id === id ? { ...r, isCompleted: !r.isCompleted } : r));
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
     const item = updated.find(r => r.id === id);
     if (item) {
-      syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'PUT', toApiReminder(item), { silent: true });
+      completionOverrides.current.set(id, Boolean(item.isCompleted));
+      syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'PUT', toApiReminder(item), { silent: true }).then(result => {
+        if (result.ok) completionOverrides.current.delete(id);
+      });
     }
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
@@ -521,7 +631,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (result.data) merged = normalizeReminder(result.data);
     }
 
-    const updated = reminders.map(r => (r.id === id ? merged : r));
+    const updated = latest.current.reminders.map(r => (r.id === id ? merged : r));
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
@@ -544,7 +654,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const deleteReminder = async (id: string) => {
     if (usesCustomApi && !(await syncToCustomApi(`/reminders/${encodeURIComponent(id)}`, 'DELETE')).ok) return false;
 
-    const updated = reminders.filter(r => r.id !== id);
+    const updated = latest.current.reminders.filter(r => r.id !== id);
     setReminders(updated);
     offlineStorage.saveReminders(updated);
 
@@ -644,6 +754,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       report(`Server tidak bisa dihubungi untuk ${method} ${cleanPath}`);
       return { ok: false };
     } finally {
+      saveVersion.current++;
       clearTimeout(timeout);
     }
   };

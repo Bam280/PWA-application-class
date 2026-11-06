@@ -258,3 +258,9 @@ ada di server.
 
 Supaya tersimpan, server perlu menambahkan kolom dan menerimanya di validasi, lalu `toApiAnnouncement`,
 `toApiSchedule`, dan `toApiReminder` di `src/lib/dataService.ts` ikut mengirimnya.
+
+### Pembaruan otomatis
+
+API belum punya koneksi real-time, jadi tab yang terbuka mengambil `GET /schedules`, `/announcements`, dan `/reminders`
+setiap 30 detik, dan langsung saat user kembali ke tab. Tab di latar belakang tidak mengirim request. Pastikan batas
+request server (rate limit) cukup: 3 request per 30 detik untuk setiap tab yang terbuka.

@@ -8,6 +8,7 @@ import {
   toApiReminder,
   formatScheduleTime,
   toDatetimeLocalValue,
+  sameApiRows,
   extractArrayPayload,
   normalizeSchedule,
   normalizeAnnouncement,
@@ -185,4 +186,11 @@ test('toDatetimeLocalValue produces the local value a datetime-local input can s
   const iso = new Date(2026, 10, 10, 23, 59).toISOString();
   assert.equal(toDatetimeLocalValue(iso), '2026-11-10T23:59');
   assert.equal(toDatetimeLocalValue('bukan tanggal'), 'bukan tanggal');
+});
+
+test('sameApiRows ignores generated timestamps but sees real changes', () => {
+  const row = { id: '1', title: 'A', updatedAt: '2026-01-01T00:00:00Z', createdAt: '2026-01-01T00:00:00Z' };
+  assert.equal(sameApiRows([row], [{ ...row, updatedAt: '2026-06-06T00:00:00Z' }]), true);
+  assert.equal(sameApiRows([row], [{ ...row, title: 'B' }]), false);
+  assert.equal(sameApiRows([row], []), false);
 });
