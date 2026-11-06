@@ -198,7 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // If external role API is not configured, resolve access locally using project role rules
     if (!isRoleApiConfigured) {
       const email = (fbUser.email || '').trim().toLowerCase();
-      const isSuperAdmin = email === 'lukigio23@gmail.com' || email === 'julionedna23@gmail.com';
+      const isSuperAdmin = email === 'andenboyo@gmail.com' || email === 'julionedna23@gmail.com' || email === 'lukigio23@gmail.com';
       const members = offlineStorage.getClassMembers();
       const foundMember = members.find(m => m.email.toLowerCase() === email);
 
@@ -279,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const apiErr = err instanceof RoleApiError ? err : null;
 
       const email = (fbUser.email || '').trim().toLowerCase();
-      const isSuperAdmin = email === 'lukigio23@gmail.com' || email === 'julionedna23@gmail.com';
+      const isSuperAdmin = email === 'andenboyo@gmail.com' || email === 'julionedna23@gmail.com' || email === 'lukigio23@gmail.com';
       const members = offlineStorage.getClassMembers();
       const foundMember = members.find(m => m.email.toLowerCase() === email);
 

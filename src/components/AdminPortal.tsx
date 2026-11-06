@@ -1991,15 +1991,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
                     {/* Action buttons */}
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                      <button
-                        type="button"
-                        disabled={testingConnection}
-                        onClick={handleTestCustomDb}
-                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold border border-slate-200 flex items-center gap-2 transition-colors disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
-                        {testingConnection ? 'Menguji Koneksi...' : 'Uji Koneksi Server Pribadi'}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={testingConnection}
+                          onClick={handleTestCustomDb}
+                          className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold border border-slate-200 flex items-center gap-2 transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
+                          {testingConnection ? 'Menguji Koneksi...' : 'Uji Koneksi Server Pribadi'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            dataService.resetToDefault();
+                            const fresh = dataService.getConfig();
+                            setCustomApiUrl(fresh.apiBaseUrl);
+                            setAuthHeaderMode('firebase_jwt');
+                            setCustomApiKey('');
+                            updateDbConfig(fresh);
+                            setConnectionResult({
+                              success: true,
+                              latencyMs: 0,
+                              message: 'Konfigurasi browser lama berhasil dihapus! Sekarang terhubung ke https://api-class.and-than.my.id/api dengan mode Firebase ID Token SSO Bearer.',
+                            });
+                          }}
+                          className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold border border-rose-200 text-xs transition-colors"
+                        >
+                          Reset Endpoint & Hapus Cache
+                        </button>
+                      </div>
 
                       <button
                         type="submit"

@@ -19,7 +19,10 @@ export interface DatabaseApiConfig {
 const STORAGE_KEY_CONFIG = 'uniclass_custom_database_api_config';
 
 export const DEFAULT_DATABASE_API_CONFIG: DatabaseApiConfig = {
-  baseUrl: ((import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined)?.trim() || 'https://api.kampus-pribadi.ac.id/v1',
+  baseUrl:
+    (typeof import.meta !== 'undefined' && import.meta?.env
+      ? (import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined
+      : undefined)?.trim() || 'https://api-class.and-than.my.id/api',
   apiKey: '',
   authHeaderName: 'Authorization',
   timeoutMs: 5000,

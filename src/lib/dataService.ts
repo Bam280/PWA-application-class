@@ -298,15 +298,18 @@ export function normalizeStudentMember(raw: any, index = 0): StudentMember {
   };
 }
 
+export const DEFAULT_CAMPUS_API_URL = 'https://api-class.and-than.my.id/api';
+
 const getEnvApiUrl = (): string => {
   try {
     if (typeof import.meta !== 'undefined' && import.meta && import.meta.env) {
-      return ((import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined)?.trim() || '';
+      const envUrl = ((import.meta.env.VITE_CUSTOM_API_URL || import.meta.env.VITE_ROLE_API_URL) as string | undefined)?.trim();
+      if (envUrl) return envUrl;
     }
   } catch {
     // Non-Vite or test environment
   }
-  return '';
+  return DEFAULT_CAMPUS_API_URL;
 };
 
 export const DEFAULT_DB_CONFIG: CustomDatabaseConfig = {
@@ -318,6 +321,25 @@ export const DEFAULT_DB_CONFIG: CustomDatabaseConfig = {
   syncWithFirestoreBackup: false,
 };
 
+// Automatic cleanup of legacy browser configuration with static custom_key
+if (typeof localStorage !== 'undefined') {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DB_CONFIG);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        parsed.authHeaderMode === 'custom_key' ||
+        parsed.apiKey ||
+        (parsed.apiBaseUrl && !parsed.apiBaseUrl.includes('api-class.and-than.my.id'))
+      ) {
+        localStorage.removeItem(STORAGE_KEY_DB_CONFIG);
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export const dataService = {
   normalizeUrl: normalizeApiUrl,
 
@@ -327,11 +349,22 @@ export const dataService = {
         const saved = localStorage.getItem(STORAGE_KEY_DB_CONFIG);
         if (saved) {
           const parsed = JSON.parse(saved);
+          // If legacy config had custom_key or old host, clear and return DEFAULT_DB_CONFIG
+          if (
+            parsed.authHeaderMode === 'custom_key' ||
+            parsed.apiKey ||
+            (parsed.apiBaseUrl && !parsed.apiBaseUrl.includes('api-class.and-than.my.id'))
+          ) {
+            localStorage.removeItem(STORAGE_KEY_DB_CONFIG);
+            return DEFAULT_DB_CONFIG;
+          }
           return {
             ...DEFAULT_DB_CONFIG,
             ...parsed,
-            apiBaseUrl: normalizeApiUrl(parsed.apiBaseUrl || ''),
-            provider: parsed.provider || (parsed.apiBaseUrl ? 'custom_api' : 'firestore'),
+            apiBaseUrl: normalizeApiUrl(parsed.apiBaseUrl || DEFAULT_CAMPUS_API_URL),
+            provider: parsed.provider || 'custom_api',
+            authHeaderMode: 'firebase_jwt',
+            apiKey: '',
           };
         }
       }
@@ -359,20 +392,33 @@ export const dataService = {
   },
 
   /**
+   * Reset config back to official Campus API defaults and remove cached overrides
+   */
+  resetToDefault() {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY_DB_CONFIG);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('db-config-changed'));
+      }
+    } catch (e) {
+      console.warn('Error resetting db config', e);
+    }
+  },
+
+  /**
    * Resolves the appropriate authorization header for personal database API requests.
-   * Completely isolated from Firebase Auth state: failing to get a token never logs the user out.
+   * Sends Authorization: Bearer <Firebase ID Token> verified by Campus API backend.
    */
   async getAuthHeaderValue(cfg: CustomDatabaseConfig): Promise<string | null> {
     try {
-      const mode = cfg.authHeaderMode || (cfg.apiKey ? 'custom_key' : 'firebase_jwt');
-      if (mode === 'firebase_jwt') {
-        if (auth.currentUser) {
-          const token = await auth.currentUser.getIdToken();
-          return `Bearer ${token}`;
-        }
-        return null;
+      // Primary authentication: Firebase ID Token (JWT)
+      if (auth.currentUser) {
+        const token = await auth.currentUser.getIdToken();
+        return `Bearer ${token}`;
       }
-      if (mode === 'custom_key' && cfg.apiKey) {
+      if (cfg.authHeaderMode === 'custom_key' && cfg.apiKey) {
         return cfg.apiKey.startsWith('Bearer ') ? cfg.apiKey : `Bearer ${cfg.apiKey}`;
       }
       return null;
@@ -384,8 +430,7 @@ export const dataService = {
 
   /**
    * Robust test connection to personal REST API database.
-   * Handles URLs with or without http(s), handles /health, fallback to /schedules or base URL,
-   * and returns descriptive Indonesian diagnostics with latency.
+   * Probes /me (with Firebase ID Token), /health, /schedules, or base URL.
    */
   async testConnection(
     rawUrl: string,
@@ -400,18 +445,17 @@ export const dataService = {
       return {
         success: false,
         latencyMs: 0,
-        message: 'URL Server API Pribadi belum diisi. Masukkan URL endpoint server Anda (contoh: https://api.kampus-pribadi.ac.id/v1 atau http://localhost:8000/api).',
+        message: 'URL Server API Pribadi belum diisi. Masukkan URL endpoint server Anda (contoh: https://api-class.and-than.my.id/api).',
       };
     }
 
     try {
-      // Validate valid URL structure
       new URL(cleanUrl);
     } catch {
       return {
         success: false,
         latencyMs: 0,
-        message: `Format URL tidak valid: "${rawUrl}". Pastikan format URL benar (contoh: https://api.kampus-pribadi.ac.id/v1).`,
+        message: `Format URL tidak valid: "${rawUrl}". Pastikan format URL benar (contoh: https://api-class.and-than.my.id/api).`,
       };
     }
 
@@ -423,7 +467,7 @@ export const dataService = {
         Accept: 'application/json, text/plain, */*',
       };
 
-      if (headerMode === 'firebase_jwt' && auth.currentUser) {
+      if (auth.currentUser) {
         try {
           const token = await auth.currentUser.getIdToken();
           headers[headerName] = `Bearer ${token}`;
@@ -434,13 +478,15 @@ export const dataService = {
         headers[headerName] = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`;
       }
 
-      // Probing strategy: try endpoints until one reaches the server
-      // 1. /health
-      // 2. /schedules
-      // 3. baseUrl directly
+      // Probing strategy:
+      // 1. /me (if logged in, confirms token verification and PostgreSQL role lookup)
+      // 2. /schedules (checks data collection route)
+      // 3. /health
+      // 4. cleanUrl directly
       const endpointsToProbe = [
-        `${cleanUrl}/health`,
+        `${cleanUrl}/me`,
         `${cleanUrl}/schedules`,
+        `${cleanUrl}/health`,
         cleanUrl,
       ];
 
@@ -456,12 +502,10 @@ export const dataService = {
           });
           lastResponse = res;
           connectedEndpoint = targetUrl;
-          // If we got an OK (200, 201, 204), stop probing immediately
           if (res.ok) break;
-          // If 401 or 403, the server definitely exists and answered!
           if (res.status === 401 || res.status === 403) break;
         } catch {
-          // If endpoint failed, proceed to next candidate
+          // proceed to next candidate
         }
       }
 
@@ -478,15 +522,23 @@ export const dataService = {
         return {
           success: true,
           latencyMs,
-          message: `Koneksi berhasil terhubung ke server API pribadi (${latencyMs}ms, HTTP ${status} OK). Database siap digunakan secara penuh. Autentikasi Firebase Auth tetap aktif independen.`,
+          message: `Koneksi berhasil terhubung (${latencyMs}ms, HTTP ${status} OK). Backend PostgreSQL memverifikasi Firebase ID Token dengan sempurna.`,
         };
       }
 
-      if (status === 401 || status === 403) {
+      if (status === 401) {
+        return {
+          success: false,
+          latencyMs,
+          message: `Server merespon 401 Unauthorized. Pastikan Anda telah login dengan akun Google aktif sehingga browser mengirim Firebase ID Token yang valid.`,
+        };
+      }
+
+      if (status === 403) {
         return {
           success: true,
           latencyMs,
-          message: `Server backend berhasil dijangkau (${latencyMs}ms, HTTP ${status}), namun membutuhkan otorisasi. Pastikan Mode Header Autentikasi atau API Key Anda sesuai dengan konfigurasi backend Anda.`,
+          message: `Server terhubung (${latencyMs}ms, HTTP 403). Email Firebase Anda belum terdaftar aktif di tabel user_roles PostgreSQL. Hubungi Super Admin untuk menambahkan hak akses.`,
         };
       }
 
@@ -494,14 +546,14 @@ export const dataService = {
         return {
           success: true,
           latencyMs,
-          message: `Server backend berhasil dijangkau (${latencyMs}ms), namun rute spesifik belum terdaftar (HTTP 404). Pastikan server backend Anda mengaktifkan endpoint rute /schedules, /announcements, dan /reminders.`,
+          message: `Server backend berhasil dijangkau (${latencyMs}ms). Pastikan rute /me, /schedules, /announcements, dan /reminders tersedia.`,
         };
       }
 
       return {
         success: false,
         latencyMs,
-        message: `Server merespon dengan kode HTTP ${status} (${lastResponse.statusText}). Autentikasi Firebase tidak terpengaruh.`,
+        message: `Server merespon dengan kode HTTP ${status} (${lastResponse.statusText}).`,
       };
     } catch (err: unknown) {
       const latencyMs = Math.round(performance.now() - startTime);
@@ -510,7 +562,7 @@ export const dataService = {
       return {
         success: false,
         latencyMs,
-        message: `Tidak dapat menjangkau server API pribadi (${errorMsg}). Pastikan backend Anda sedang berjalan dan mengizinkan header CORS (Access-Control-Allow-Origin: *). Autentikasi Firebase Auth Anda tetap 100% aman dan aktif.`,
+        message: `Tidak dapat menjangkau server API pribadi (${errorMsg}). Pastikan backend Anda sedang berjalan dan mengizinkan CORS.`,
       };
     }
   },

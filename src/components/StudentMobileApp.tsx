@@ -1329,20 +1329,41 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                       </div>
                     )}
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={mobTestLoading}
+                          onClick={handleMobileTestDb}
+                          className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-[11px] border border-slate-200 transition-colors"
+                        >
+                          {mobTestLoading ? 'Menguji...' : 'Uji Koneksi'}
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-[11px] shadow-xs"
+                        >
+                          Simpan
+                        </button>
+                      </div>
+
                       <button
                         type="button"
-                        disabled={mobTestLoading}
-                        onClick={handleMobileTestDb}
-                        className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-[11px] border border-slate-200 transition-colors"
+                        onClick={() => {
+                          dataService.resetToDefault();
+                          const fresh = dataService.getConfig();
+                          setMobApiUrl(fresh.apiBaseUrl);
+                          setMobAuthMode('firebase_jwt');
+                          setMobApiKey('');
+                          updateDbConfig(fresh);
+                          setMobTestResult({
+                            success: true,
+                            message: 'Cache lokal browser dibersihkan. Kembali ke endpoint resmi https://api-class.and-than.my.id/api (Firebase ID Token SSO).',
+                          });
+                        }}
+                        className="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-semibold text-[10px] border border-rose-200 transition-colors text-center"
                       >
-                        {mobTestLoading ? 'Menguji...' : 'Uji Koneksi'}
-                      </button>
-                      <button
-                        type="submit"
-                        className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-[11px] shadow-xs"
-                      >
-                        Simpan
+                        Hapus Cache Konfigurasi & Reset ke API Resmi
                       </button>
                     </div>
                   </form>

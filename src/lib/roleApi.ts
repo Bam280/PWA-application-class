@@ -13,9 +13,22 @@ import { ASSET_IMAGES } from './seedData';
  * The base URL is fixed at build time (VITE_ROLE_API_URL) on purpose: a URL editable in the
  * browser would let anyone point the app at an API that answers "super_admin".
  */
-const BASE_URL = ((import.meta.env.VITE_ROLE_API_URL as string | undefined) ?? '').trim().replace(/\/+$/, '');
+export const DEFAULT_CAMPUS_API_BASE_URL = 'https://api-class.and-than.my.id/api';
+
+const getEnvRoleUrl = (): string => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_ROLE_API_URL) {
+      return (import.meta.env.VITE_ROLE_API_URL as string).trim();
+    }
+  } catch {
+    // Non-Vite or test runner
+  }
+  return DEFAULT_CAMPUS_API_BASE_URL;
+};
+
+const BASE_URL = (getEnvRoleUrl() || DEFAULT_CAMPUS_API_BASE_URL).replace(/\/+$/, '');
 const TIMEOUT_MS = 8000;
-const EXAMPLE_URL = 'https://api.domain-anda.com/api';
+const EXAMPLE_URL = 'https://api-class.and-than.my.id/api';
 
 /**
  * Why VITE_ROLE_API_URL cannot be used, or null if it looks valid. A value that is not an absolute
