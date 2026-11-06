@@ -325,6 +325,16 @@ export function toApiReminder(item: Pick<ReminderItem, 'title' | 'deadline' | 'i
   };
 }
 
+/**
+ * True when two lists from the API hold the same data. Timestamps are ignored because the normalizers
+ * fill missing ones with the current time, which would make every refresh look like a change.
+ */
+export function sameApiRows(a: unknown[], b: unknown[]): boolean {
+  const key = (rows: unknown[]) =>
+    JSON.stringify(rows, (k, v) => (k === 'updatedAt' || k === 'createdAt' ? undefined : v));
+  return key(a) === key(b);
+}
+
 /** Converts a stored time (ISO, from the API) to the local "YYYY-MM-DDTHH:mm" a datetime-local input needs. */
 export function toDatetimeLocalValue(value: string): string {
   const date = new Date(value);
