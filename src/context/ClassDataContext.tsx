@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   collection,
   onSnapshot,
@@ -70,6 +70,10 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
   const [loading, setLoading] = useState(false);
   const isAdminUser = user?.role === 'super_admin' || user?.role === 'class_admin';
+  // The API and Firestore reject calls without a session, so wait for a signed-in, approved user.
+  const canLoadData = Boolean(authUid && user?.status === 'active');
+  // Report a failed data load once per account instead of on every re-run of the loader.
+  const loadFailureReportedFor = useRef<string | null>(null);
 
   useEffect(() => {
     const handleApprovalsChange = () => {
@@ -85,36 +89,27 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setMembersError(null);
       return;
     }
-    // If custom_api is configured with apiBaseUrl, fetch roster from the private API
-    if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
-      try {
-        const customMembers = await dataService.fetchFromCustomApi<StudentMember[]>('/users', dbConfig);
-        if (customMembers && Array.isArray(customMembers)) {
-          setClassMembers(customMembers);
-          setMembersError(null);
-          offlineStorage.saveClassMembers(customMembers);
-          return;
-        }
-      } catch (e) {
-        console.warn('Private API roster fetch notice:', e);
-      }
-    }
-    // If external role API is configured via env, query it
-    if (isRoleApiConfigured && isOnline) {
+    if (isOnline && isRoleApiConfigured) {
       try {
         const members = (await roleApi.listUsers()).map(toStudentMember);
         setClassMembers(members);
         setMembersError(null);
         offlineStorage.saveClassMembers(members);
-        return;
       } catch (err) {
-        console.warn('Role API roster load notice:', err);
+        console.warn('Role API roster load failed:', err);
+        setMembersError(err instanceof Error ? err.message : 'Gagal memuat daftar anggota.');
+        setClassMembers(offlineStorage.getClassMembers());
       }
+      return;
     }
-    // Otherwise fallback to clean local roster
-    setClassMembers(offlineStorage.getClassMembers());
+    // Role API not usable (misconfigured build) or offline: last known roster, or the private API.
+    const customMembers =
+      isOnline && !isRoleApiConfigured
+        ? await dataService.fetchFromCustomApi<StudentMember[]>('/users', dbConfig)
+        : null;
+    setClassMembers(customMembers && Array.isArray(customMembers) ? customMembers : offlineStorage.getClassMembers());
     setMembersError(null);
-  }, [isAdminUser, isOnline, dbConfig.provider, dbConfig.apiBaseUrl]);
+  }, [isAdminUser, isOnline, dbConfig]);
 
   // Members only see their own data; admins load the roster for the signed-in account.
   useEffect(() => {
@@ -132,16 +127,30 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return;
     }
 
+    // No session yet (or still waiting for approval): keep the local cache, every call would be rejected.
+    if (!canLoadData) return;
+    let cancelled = false;
+
     // If provider is custom_api, fetch records from the personal backend API
     if (dbConfig.provider === 'custom_api' && dbConfig.apiBaseUrl) {
       (async () => {
         try {
-          const [customScheds, customAnns, customRems, customUsers] = await Promise.all([
+          const [customScheds, customAnns, customRems] = await Promise.all([
             dataService.fetchFromCustomApi<ScheduleItem[]>('/schedules', dbConfig),
             dataService.fetchFromCustomApi<Announcement[]>('/announcements', dbConfig),
             dataService.fetchFromCustomApi<ReminderItem[]>('/reminders', dbConfig),
-            isAdminUser ? dataService.fetchFromCustomApi<StudentMember[]>('/users', dbConfig) : Promise.resolve(null),
           ]);
+          if (cancelled) return;
+
+          // fetchFromCustomApi answers null when the request failed; old data stays on screen.
+          if ((!customScheds || !customAnns || !customRems) && loadFailureReportedFor.current !== authUid) {
+            loadFailureReportedFor.current = authUid;
+            notificationService.dispatchNotification(
+              'Gagal Memuat Data dari Server',
+              'Sebagian jadwal, berita, atau pengingat tidak bisa dimuat. Yang tampil adalah data terakhir di perangkat ini.',
+              'important'
+            );
+          }
           if (customScheds && Array.isArray(customScheds)) {
             setSchedules(customScheds);
             offlineStorage.saveSchedules(customScheds);
@@ -154,18 +163,11 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             setReminders(customRems);
             offlineStorage.saveReminders(customRems);
           }
-          if (customUsers && Array.isArray(customUsers)) {
-            setClassMembers(customUsers);
-            offlineStorage.saveClassMembers(customUsers);
-          }
         } catch (e) {
           console.warn('Personal API data load notice:', e);
         }
       })();
     }
-
-    // Without a Firebase session every Firestore read is denied; keep the local cache until sign-in.
-    if (!authUid) return;
 
     // Schedules listener (for Firestore active provider or backup sync)
     const schedUnsub = onSnapshot(
@@ -254,12 +256,13 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
 
     return () => {
+      cancelled = true;
       schedUnsub();
       annUnsub();
       remUnsub();
       approvalsUnsub();
     };
-  }, [authUid, isOnline, isAdminUser, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
+  }, [authUid, canLoadData, isOnline, isAdminUser, dbConfig.provider, dbConfig.apiBaseUrl, dbConfig.syncWithFirestoreBackup]);
 
   const addAnnouncement = async (item: Omit<Announcement, 'id' | 'publishedAt' | 'readCount'>) => {
     const newId = `ann-${Date.now()}`;
@@ -344,7 +347,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAnnouncements(updatedAnnouncements);
     offlineStorage.saveAnnouncements(updatedAnnouncements);
 
-    syncToCustomApi(`/announcements/${announcementId}/reads`, 'POST', receipt);
+    syncToCustomApi(`/announcements/${announcementId}/reads`, 'POST', receipt, { silent: true });
 
     // Sync to Firestore subcollection if online
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
@@ -457,7 +460,7 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     const item = updated.find(r => r.id === id);
     if (item) {
-      syncToCustomApi(`/reminders/${id}`, 'PUT', { isCompleted: item.isCompleted });
+      syncToCustomApi(`/reminders/${id}`, 'PUT', { isCompleted: item.isCompleted }, { silent: true });
     }
 
     if (isOnline && (dbConfig.provider === 'firestore' || dbConfig.syncWithFirestoreBackup)) {
@@ -534,32 +537,56 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     dataService.saveConfig(cfg);
   };
 
-  const syncToCustomApi = async (path: string, method: string, body?: unknown) => {
+  /**
+   * Sends a change to the private API. The screen has already been updated, so a failure must be
+   * reported: otherwise the change silently disappears on the next reload.
+   * `silent` is for background updates the user did not explicitly ask to save.
+   */
+  const syncToCustomApi = async (path: string, method: string, body?: unknown, options?: { silent?: boolean }) => {
     if (dbConfig.provider !== 'custom_api' || !dbConfig.apiBaseUrl) return;
+    const cleanBase = dataService.normalizeUrl(dbConfig.apiBaseUrl);
+    if (!cleanBase) return;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+    const report = (reason: string) => {
+      console.warn(`Custom API ${method} ${cleanPath} failed: ${reason}`);
+      if (options?.silent) return;
+      notificationService.dispatchNotification(
+        'Gagal Menyimpan ke Server',
+        `${reason}. Perubahan ini hanya tersimpan di perangkat ini dan bisa hilang saat dimuat ulang.`,
+        'urgent'
+      );
+    };
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    const authHeader = await dataService.getAuthHeaderValue(dbConfig);
+    if (authHeader) {
+      headers[dbConfig.authHeaderName || 'Authorization'] = authHeader;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
     try {
-      const cleanBase = dataService.normalizeUrl(dbConfig.apiBaseUrl);
-      if (!cleanBase) return;
-      const cleanPath = path.startsWith('/') ? path : `/${path}`;
-      const url = `${cleanBase}${cleanPath}`;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
-      const authHeader = await dataService.getAuthHeaderValue(dbConfig);
-      if (authHeader) {
-        headers[dbConfig.authHeaderName || 'Authorization'] = authHeader;
-      }
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
-      await fetch(url, {
+      const res = await fetch(`${cleanBase}${cleanPath}`, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
+      if (!res.ok) {
+        const detail = await res.json().then(
+          (json: { message?: unknown; error?: unknown }) => json?.message ?? json?.error,
+          () => undefined
+        );
+        report(`Server menolak ${method} ${cleanPath} (HTTP ${res.status}${typeof detail === 'string' ? `: ${detail}` : ''})`);
+      }
+    } catch {
+      report(`Server tidak bisa dihubungi untuk ${method} ${cleanPath}`);
+    } finally {
       clearTimeout(timeout);
-    } catch (e) {
-      console.warn(`Custom API sync notice for ${path} (Firebase Auth remains completely unaffected):`, e);
     }
   };
 
@@ -581,10 +608,10 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const next = classMembers.map(m => (m.id === memberId ? { ...m, role: newRole } : m));
     setClassMembers(next);
     offlineStorage.saveClassMembers(next);
-    syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'PATCH', { role: newRole });
 
     // If external role API is not configured via env, local update + custom api sync is immediately authoritative
     if (!isRoleApiConfigured) {
+      syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'PATCH', { role: newRole });
       notificationService.dispatchNotification(
         'Role Anggota Diperbarui',
         `${target.name} sekarang ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
@@ -722,8 +749,6 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       'normal'
     );
 
-    syncToCustomApi('/users', 'POST', approvedMember);
-
     // Sync to Firestore users collection & remove from pending_approvals
     if (isOnline) {
       deleteDoc(doc(db, 'pending_approvals', id)).catch(() => undefined);
@@ -756,8 +781,8 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteMember = async (memberId: string): Promise<boolean> => {
-    syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'DELETE');
     if (!isRoleApiConfigured) {
+      syncToCustomApi(`/users/${encodeURIComponent(memberId)}`, 'DELETE');
       const next = classMembers.filter(m => m.id !== memberId);
       setClassMembers(next);
       offlineStorage.saveClassMembers(next);
