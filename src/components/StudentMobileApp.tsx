@@ -310,7 +310,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
   const handleMobileCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobileSchedCourse.trim() || !mobileSchedCode.trim()) return;
+    if (!mobileSchedCourse.trim()) return;
 
     const saved = await addSchedule({
       courseName: mobileSchedCourse,
@@ -1407,8 +1407,11 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                     </div>
                     <button
                       onClick={() => {
-                        notificationService.requestPushPermission();
-                        notificationService.dispatchNotification('Uji Notifikasi HP', 'Pengingat berhasil terhubung.', 'normal');
+                        if (notificationService.getDeviceState() === 'granted') {
+                          notificationService.showOnDevice('Uji notifikasi', 'Notifikasi di perangkat ini berfungsi.');
+                        } else {
+                          notificationService.enableDeviceNotifications();
+                        }
                       }}
                       className="px-3 py-1.5 bg-slate-900 text-white font-bold rounded-lg text-xs"
                     >
@@ -1692,7 +1695,6 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="ODP-EAS-01"
                   value={mobileSchedCode}
                   onChange={(e) => setMobileSchedCode(e.target.value)}
@@ -1708,7 +1710,6 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                   </label>
                   <input
                     type="text"
-                    required
                     placeholder="Bambang Wijaya"
                     value={mobileSchedLecturer}
                     onChange={(e) => setMobileSchedLecturer(e.target.value)}

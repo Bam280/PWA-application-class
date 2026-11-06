@@ -325,6 +325,29 @@ export function toApiReminder(item: Pick<ReminderItem, 'title' | 'deadline' | 'i
   };
 }
 
+/** Compares two schedule lists by id, for "jadwal berubah / dibatalkan" notifications. */
+export function describeScheduleChanges(before: ScheduleItem[], after: ScheduleItem[]) {
+  const afterById = new Map(after.map(item => [item.id, item]));
+  const dayLabel = (day: number) => DAYS_OF_WEEK.find(d => d.value === day)?.label ?? String(day);
+  const changed: { item: ScheduleItem; details: string }[] = [];
+  const removed: ScheduleItem[] = [];
+
+  for (const old of before) {
+    const now = afterById.get(old.id);
+    if (!now) {
+      removed.push(old);
+      continue;
+    }
+    const parts: string[] = [];
+    if (old.dayOfWeek !== now.dayOfWeek) parts.push(`Hari: ${dayLabel(old.dayOfWeek)} → ${dayLabel(now.dayOfWeek)}`);
+    if (old.startTime !== now.startTime) parts.push(`Jam: ${old.startTime} → ${now.startTime}`);
+    if (old.room !== now.room) parts.push(`Ruang: ${old.room || '-'} → ${now.room || '-'}`);
+    if (old.courseName !== now.courseName) parts.push(`Nama: ${old.courseName} → ${now.courseName}`);
+    if (parts.length) changed.push({ item: now, details: parts.join(' · ') });
+  }
+  return { changed, removed };
+}
+
 /**
  * True when two lists from the API hold the same data. Timestamps are ignored because the normalizers
  * fill missing ones with the current time, which would make every refresh look like a change.

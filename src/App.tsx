@@ -6,6 +6,7 @@ import { StudentMobileApp } from './components/StudentMobileApp';
 import { AdminPortal } from './components/AdminPortal';
 import { NotificationModal } from './components/NotificationModal';
 import { LoginPage } from './components/LoginPage';
+import { PushPermissionPrompt } from './components/PushPermissionPrompt';
 import { PendingApprovalView } from './components/PendingApprovalView';
 import { notificationService, InAppNotification } from './lib/notifications';
 import { testFirebaseConnection } from './lib/firebase';
@@ -77,6 +78,11 @@ const MainApp: React.FC = () => {
     setViewOverride(null);
   }, [user?.id]);
 
+  // Each account keeps its own notification history on this device.
+  useEffect(() => {
+    notificationService.setAccount(user?.status === 'active' ? user.id : null);
+  }, [user?.id, user?.status]);
+
   // Subscribe to real-time notification engine
   useEffect(() => {
     const unsub = notificationService.subscribe((list) => {
@@ -147,6 +153,7 @@ const MainApp: React.FC = () => {
         )}
       </main>
 
+      <PushPermissionPrompt />
       <NotificationModal
         isOpen={isNotifOpen}
         onClose={() => setIsNotifOpen(false)}

@@ -262,5 +262,19 @@ Supaya tersimpan, server perlu menambahkan kolom dan menerimanya di validasi, la
 ### Pembaruan otomatis
 
 API belum punya koneksi real-time, jadi tab yang terbuka mengambil `GET /schedules`, `/announcements`, dan `/reminders`
-setiap 30 detik, dan langsung saat user kembali ke tab. Tab di latar belakang tidak mengirim request. Pastikan batas
-request server (rate limit) cukup: 3 request per 30 detik untuk setiap tab yang terbuka.
+setiap 30 detik, dan langsung saat user kembali ke tab. Tab di latar belakang hanya ikut mengambil data kalau notifikasi
+perangkat diaktifkan. Pastikan batas request server (rate limit) cukup: 3 request per 30 detik untuk setiap tab.
+
+### Notifikasi ke HP
+
+Notifikasi perangkat saat ini hanya muncul selama aplikasi masih berjalan di latar belakang, karena aplikasi sendiri yang
+mengeceknya. **Saat aplikasi ditutup, tidak ada yang bisa memunculkan notifikasi** sampai server mengirim Web Push.
+
+Yang dibutuhkan untuk Web Push lewat Firebase Cloud Messaging (FCM):
+
+1. Firebase Console → Project settings → Cloud Messaging → Web Push certificates → buat key pair (VAPID key).
+2. Endpoint baru di API untuk menyimpan token perangkat per user, mis. `POST /push-tokens { token }`.
+3. Saat admin membuat atau mengubah pengumuman, pengingat, atau jadwal, server mengirim pesan ke token tersebut lewat
+   Firebase Admin SDK, dan menghapus token yang sudah tidak berlaku.
+
+Di iPhone/iPad, notifikasi hanya tersedia setelah aplikasi ditambahkan ke Layar Utama (iOS 16.4 ke atas).
