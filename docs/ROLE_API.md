@@ -198,3 +198,25 @@ Yang perlu disiapkan:
    dilewati oleh orang yang memanggil API secara langsung.
 
 "Lupa password?" memakai email reset bawaan Firebase (template bisa diubah di Authentication → Templates).
+
+## 8. Sumber kebenaran role & alur persetujuan
+
+**Database role adalah satu-satunya penentu role.** Aplikasi tidak punya daftar email cadangan.
+
+| Balasan `GET /me` | Perilaku aplikasi |
+|---|---|
+| `200` | Masuk dengan role dari database. |
+| `404` / `403` berformat JSON | Login Google: masuk antrean persetujuan. Login password: langsung ditolak. |
+| `401` | Logout, diminta login ulang. |
+| Tidak terjangkau, `5xx`, atau bukan JSON | Pakai role terakhir yang pernah dikonfirmasi API untuk akun itu. Jika tidak ada, tampil layar error dengan tombol Coba lagi. |
+
+Konsekuensinya:
+
+- **Minimal satu `super_admin` harus sudah ada di database** (lihat `INSERT` di bagian 1). Kalau tidak, tidak ada
+  yang bisa menyetujui antrean.
+- Menyetujui user memanggil `POST /users`. Jika gagal, permintaan tetap di antrean dan admin melihat pesan error.
+  `409` dianggap "sudah terdaftar" dan role-nya mengikuti data yang ada.
+- **Antrean `pending_approvals` hanya bisa dibaca admin menurut `firestore.rules`**: email yang tertulis di fungsi
+  `isAdmin()`, atau akun dengan custom claim `role` (bagian 4). Super admin yang hanya ada di database dan belum punya
+  claim akan melihat antrean kosong.
+- API tetap wajib menolak token dengan `email_verified` bernilai `false` (bagian 3).

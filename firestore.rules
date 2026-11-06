@@ -32,7 +32,8 @@ service cloud.firestore {
       return isSignedIn() && (
         // Role mirrored by the role API into Firebase custom claims (see docs/ROLE_API.md)
         request.auth.token.get('role', '') in ['super_admin', 'class_admin'] ||
-        (request.auth.token.email != null && (
+        // Only a verified address counts: otherwise anyone could sign up with an admin's email.
+        (request.auth.token.get('email_verified', false) == true && request.auth.token.email != null && (
           request.auth.token.email.lower() == 'andenboyo@gmail.com' ||
           request.auth.token.email.lower() == 'lukigio23@gmail.com' ||
           request.auth.token.email.lower() == 'julionedna23@gmail.com' ||
@@ -43,6 +44,16 @@ service cloud.firestore {
     }
 
     // Entity validations
+    function isValidPendingApproval(data) {
+      return data.keys().hasOnly(['id', 'uid', 'email', 'displayName', 'avatarUrl', 'requestedAt', 'status']) &&
+             data.uid == request.auth.uid &&
+             data.id == request.auth.uid &&
+             request.auth.token.email != null &&
+             data.email == request.auth.token.email.lower() &&
+             data.displayName is string && data.displayName.size() <= 100 &&
+             data.status == 'pending';
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['email', 'displayName', 'role']) &&
              data.email is string && data.email.size() <= 128 &&
@@ -102,8 +113,10 @@ service cloud.firestore {
 
     // Pending approvals collection for Google SSO unconfirmed users
     match /pending_approvals/{approvalId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
+      // Names and emails in the queue are visible to admins and to the requester only.
+      allow get: if isAdmin() || isCurrentUser(approvalId);
+      allow list: if isAdmin();
+      allow create: if isCurrentUser(approvalId) && isValidPendingApproval(incoming());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }

@@ -686,37 +686,42 @@ export const ClassDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const approvePendingUser = async (id: string, newRole: UserRole, nim: string): Promise<boolean> => {
-    const approvedMember = offlineStorage.approveUserAccess(
-      id,
-      newRole,
-      nim,
-      user?.displayName || 'Super Admin'
-    );
+    const target = offlineStorage.getPendingApprovals().find(p => p.id === id);
+    if (!target) return false;
+
+    // The role database decides access: the request only counts as approved once the API saved it.
+    // Otherwise the admin would see "approved" while the user stays stuck on the waiting screen.
+    let alreadyRegistered = false;
+    try {
+      await roleApi.createUser({
+        email: target.email.trim().toLowerCase(),
+        name: target.displayName.trim(),
+        nim: nim.trim() || undefined,
+        role: newRole,
+      });
+    } catch (err) {
+      if (err instanceof RoleApiError && err.kind === 'conflict') {
+        alreadyRegistered = true;
+      } else {
+        notificationService.dispatchNotification('Gagal Menyetujui Akses', describeRosterError(err), 'urgent');
+        return false;
+      }
+    }
+
+    const approvedMember = offlineStorage.approveUserAccess(id, newRole, nim, user?.displayName || 'Super Admin');
     if (!approvedMember) return false;
 
-    // Update roster state locally
-    setClassMembers(prev => [...prev.filter(m => m.email.toLowerCase() !== approvedMember.email.toLowerCase()), approvedMember]);
     setPendingApprovals(offlineStorage.getPendingApprovals());
+    await reloadMembers();
 
     notificationService.dispatchNotification(
       'Akses User Disetujui',
-      `${approvedMember.name} (${approvedMember.email}) disetujui sebagai ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
+      alreadyRegistered
+        ? `${approvedMember.email} sudah terdaftar di database, sehingga role-nya mengikuti data yang ada.`
+        : `${approvedMember.name} (${approvedMember.email}) disetujui sebagai ${ROLE_DEFINITIONS[newRole]?.label || newRole}.`,
       'normal'
     );
 
-    // Sync to PostgreSQL backend via roleApi so /me returns active role for this user
-    if (isRoleApiConfigured) {
-      try {
-        await roleApi.createUser({
-          email: approvedMember.email.trim().toLowerCase(),
-          name: approvedMember.name.trim(),
-          nim: approvedMember.nim.trim(),
-          role: newRole,
-        });
-      } catch (err) {
-        console.warn('Campus API createUser notice (might already exist in PostgreSQL):', err);
-      }
-    }
     syncToCustomApi('/users', 'POST', approvedMember);
 
     // Sync to Firestore users collection & remove from pending_approvals
