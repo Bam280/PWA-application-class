@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { dayOfWeekOf, getWeekDays, parseDateKey, toDateKey } from './calendarUtils';
+import { generateSchedulesICS, getGoogleCalendarUrlForSchedule } from './calendarSync';
 import {
   getMonthCalendarWeeks,
   calculateAcademicWeek,
@@ -32,6 +34,7 @@ test('getMonthCalendarWeeks generates valid week structures for November 2026', 
       courseName: 'Basis Data',
       courseCode: 'IF-312',
       lecturer: 'Dosen A',
+      date: '2026-11-12',
       dayOfWeek: 4, // Kamis
       startTime: '08:00',
       endTime: '10:30',
@@ -51,13 +54,47 @@ test('getMonthCalendarWeeks generates valid week structures for November 2026', 
     assert.equal(w.days[6].dayOfWeek, 7, 'Last day must be Sunday');
   }
 
-  // Check Thursday (dayOfWeek 4) has mock schedule
-  const thursdays = weeks.flatMap((w) => w.days.filter((d) => d.dayOfWeek === 4 && d.isCurrentMonth));
-  assert.ok(thursdays.length >= 4);
-  for (const th of thursdays) {
-    assert.equal(th.hasSchedule, true);
-    assert.equal(th.scheduleCount, 1);
-  }
+  // Only 12 Nov has the session; the other Thursdays stay empty.
+  const days = weeks.flatMap((w) => w.days);
+  const withSchedule = days.filter((d) => d.hasSchedule);
+  assert.equal(withSchedule.length, 1);
+  assert.equal(withSchedule[0].dayNumber, 12);
+  assert.equal(withSchedule[0].scheduleCount, 1);
+  assert.equal(weeks.reduce((sum, w) => sum + w.totalSchedules, 0), 1);
+});
+
+test('a schedule without a date is on no calendar day', () => {
+  const noDate = { id: 'old', courseName: 'Lama', courseCode: '', lecturer: '', dayOfWeek: 1, startTime: '08:00', endTime: '10:00', room: '', building: '', classType: 'offline' } as ScheduleItem;
+  const weeks = getMonthCalendarWeeks(2026, 10, [noDate], []);
+  assert.equal(weeks.reduce((sum, w) => sum + w.totalSchedules, 0), 0);
+});
+
+test('parseDateKey and toDateKey use the local calendar date', () => {
+  const date = parseDateKey('2026-11-10') as Date;
+  assert.equal(date.getDate(), 10);
+  assert.equal(date.getHours(), 0);
+  assert.equal(dayOfWeekOf(date), 2);
+  assert.equal(toDateKey(date), '2026-11-10');
+  assert.equal(parseDateKey('Senin'), null);
+  assert.equal(parseDateKey('2026-02-31'), null);
+  assert.equal(parseDateKey(undefined), null);
+});
+
+test('getWeekDays starts on Monday, also from a Sunday', () => {
+  const days = getWeekDays(new Date(2026, 10, 8)); // Sunday 8 Nov
+  assert.equal(toDateKey(days[0]), '2026-11-02');
+  assert.equal(toDateKey(days[6]), '2026-11-08');
+  assert.equal(toDateKey(getWeekDays(new Date(2026, 10, 8), 1)[0]), '2026-11-09');
+});
+
+test('calendar exports hold one event on the date, without repeating', () => {
+  const dated = { id: 'd', courseName: 'Sesi', courseCode: '', lecturer: '', date: '2026-11-10', dayOfWeek: 2, startTime: '09:00', endTime: '11:00', room: 'R', building: 'G', classType: 'offline' } as ScheduleItem;
+  const old = { ...dated, id: 'old', date: undefined };
+  const ics = generateSchedulesICS([dated, old]);
+  assert.equal(ics.match(/BEGIN:VEVENT/g)?.length, 1);
+  assert.ok(!ics.includes('RRULE'));
+  assert.ok(ics.includes(`DTSTART:${new Date(2026, 10, 10, 9).toISOString().replace(/[-:]|\.\d{3}/g, '')}`));
+  assert.ok(!getGoogleCalendarUrlForSchedule(dated).includes('recur='));
 });
 
 test('getDateInWeek returns correct date for Monday of selected week', () => {

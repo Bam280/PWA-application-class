@@ -78,7 +78,9 @@ export interface ScheduleItem {
   lecturer: string;   // Nama Pembicara
   divisionName?: string; // Nama Divisi BNI
   speakerRole?: string; // Jabatan: Dept Head / Team Leader
-  dayOfWeek: number; // 1 = Senin, 2 = Selasa, 3 = Rabu, 4 = Kamis, 5 = Jumat, 6 = Sabtu, 7 = Minggu
+  /** The date of the session, "YYYY-MM-DD". Rows saved before dates existed have none and are not on any calendar. */
+  date?: string;
+  dayOfWeek: number; // Follows the date. 1 = Senin, 2 = Selasa, 3 = Rabu, 4 = Kamis, 5 = Jumat, 6 = Sabtu, 7 = Minggu
   startTime: string; // "08:30"
   endTime: string;   // "11:30"
   room: string;      // Ruang Kelas yang digunakan
