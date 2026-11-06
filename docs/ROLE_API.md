@@ -176,9 +176,11 @@ login lewat cara ini ternyata `class_member`, aplikasi langsung me-logout-nya da
 Yang perlu disiapkan:
 
 1. **Aktifkan provider**: Firebase Console → Authentication → Sign-in method → **Email/Password** → Enable.
-2. **Matikan pendaftaran mandiri**: Authentication → Settings → User actions → hapus centang
-   **Enable create (sign-up)** (dan sebaiknya juga *Enable delete*). Tanpa ini, siapa pun bisa membuat akun
-   password lewat API Firebase — termasuk dengan email milik admin yang belum pernah login.
+2. **Biarkan "Enable create (sign-up)" tetap aktif** (Authentication → Settings → User actions). Opsi ini juga
+   berlaku untuk Google: kalau dimatikan, akun Google baru gagal login dengan `auth/admin-restricted-operation`
+   dan tidak bisa masuk antrean persetujuan. Akibatnya, siapa pun bisa membuat akun password lewat API Firebase,
+   termasuk dengan email milik admin. Akun seperti itu belum terverifikasi, jadi **API wajib menolak token dengan
+   `email_verified` bernilai `false`** (bagian 3). `firestore.rules` sudah mengeceknya.
 3. **Buat akun admin** lewat Admin SDK (disarankan, agar `email_verified` bernilai `true` sehingga lolos
    pengecekan di bagian 3):
 
@@ -220,3 +222,13 @@ Konsekuensinya:
   `isAdmin()`, atau akun dengan custom claim `role` (bagian 4). Super admin yang hanya ada di database dan belum punya
   claim akan melihat antrean kosong.
 - API tetap wajib menolak token dengan `email_verified` bernilai `false` (bagian 3).
+
+## 9. Arti kode error di halaman login
+
+User hanya melihat pesan singkat dan kodenya. Cara mengatasinya ada di sini, khusus untuk admin:
+
+| Kode | Penyebab | Cara mengatasi |
+|---|---|---|
+| `auth/admin-restricted-operation` | "Enable create (sign-up)" dimatikan, jadi akun baru tidak bisa dibuat. Akun yang sudah ada tetap bisa login. | Firebase Console → Authentication → Settings → User actions → aktifkan **Enable create (sign-up)**. |
+| `auth/unauthorized-domain` | Alamat aplikasi belum terdaftar di Firebase. | Authentication → Settings → Authorized domains → tambahkan domainnya. |
+| `auth/operation-not-allowed` | Metode login belum aktif. | Authentication → Sign-in method → aktifkan **Google** atau **Email/Password**. |

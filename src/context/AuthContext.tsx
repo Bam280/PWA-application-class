@@ -110,9 +110,9 @@ function describeAuthError(err: unknown): string | null {
     case 'auth/popup-blocked':
       return 'Jendela login diblokir oleh browser. Izinkan pop-up untuk situs ini, lalu tekan tombol masuk lagi.';
     case 'auth/unauthorized-domain':
-      return `Domain ${window.location.hostname} belum diizinkan di Firebase Authentication. Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`;
+      return `Login belum tersedia dari alamat ini. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/operation-not-allowed':
-      return 'Metode login ini belum diaktifkan di Firebase Console → Authentication → Sign-in method.';
+      return `Metode login ini belum tersedia. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/invalid-credential':
     case 'auth/invalid-login-credentials':
     case 'auth/wrong-password':
@@ -129,10 +129,11 @@ function describeAuthError(err: unknown): string | null {
     case 'auth/user-disabled':
       return 'Akun ini telah dinonaktifkan. Hubungi administrator.';
     case 'auth/admin-restricted-operation':
-      return 'Operasi dibatasi oleh setelan Firebase Console (auth/admin-restricted-operation). Pendaftaran pengguna baru atau provider Google Sign-In belum diaktifkan di Firebase Console → Authentication.';
+      // Firebase raises this only when a new account would be created; existing accounts still sign in.
+      return `Akun Google ini belum bisa digunakan untuk masuk. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/internal-error':
     default:
-      return 'Gagal masuk. Silakan coba lagi.';
+      return `Gagal masuk. Silakan coba lagi.${code ? ` (Kode: ${code})` : ''}`;
   }
 }
 

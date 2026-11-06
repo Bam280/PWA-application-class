@@ -126,61 +126,16 @@ export const LoginPage: React.FC = () => {
               )}
 
               {authError && (
-                <div className="space-y-3">
-                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <span className="flex-1 leading-relaxed">{authError}</span>
-                    <button
-                      onClick={clearAuthError}
-                      className="text-rose-500 hover:text-rose-700 font-bold shrink-0 p-1"
-                      aria-label="Tutup pesan"
-                    >
-                      ×
-                    </button>
-                  </div>
-
-                  {authError.includes('admin-restricted-operation') && (
-                    <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl text-xs text-amber-950 space-y-2.5">
-                      <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                        <span>💡 Cara Mengatasi di Firebase Console:</span>
-                      </div>
-                      <p className="text-slate-600 leading-relaxed text-[11px]">
-                        Firebase memblokir pendaftaran akun Google baru dari sisi klien karena opsi pendaftaran mandiri dinonaktifkan di proyek <strong>gen-lang-client-0512584165</strong>:
-                      </p>
-                      <ol className="list-decimal pl-4 space-y-1.5 text-slate-700 text-[11px]">
-                        <li>
-                          Buka{' '}
-                          <a
-                            href="https://console.firebase.google.com/project/gen-lang-client-0512584165/authentication/providers"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-bold text-amber-900 underline hover:text-amber-700"
-                          >
-                            Firebase Console → Sign-in method
-                          </a>{' '}
-                          dan pastikan provider <strong>Google</strong> dalam status <em>Enabled</em>.
-                        </li>
-                        <li>
-                          Buka{' '}
-                          <a
-                            href="https://console.firebase.google.com/project/gen-lang-client-0512584165/authentication/settings"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-bold text-amber-900 underline hover:text-amber-700"
-                          >
-                            Firebase Console → Settings → User actions
-                          </a>{' '}
-                          dan centang <strong>Enable create (sign-up)</strong> lalu Simpan.
-                        </li>
-                        <li>
-                          Atau tambahkan email pengguna (mis. <strong>LukiGio23@gmail.com</strong>) secara manual melalui tab <em>Users → Add user</em>.
-                        </li>
-                      </ol>
-                      <p className="text-[11px] text-amber-800 font-semibold pt-1 border-t border-amber-200/80">
-                        👉 Setelah setelan di atas disimpan, silakan klik tombol <strong>Masuk dengan Google</strong> kembali.
-                      </p>
-                    </div>
-                  )}
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="flex-1 leading-relaxed">{authError}</span>
+                  <button
+                    onClick={clearAuthError}
+                    className="text-rose-500 hover:text-rose-700 font-bold shrink-0 p-1"
+                    aria-label="Tutup pesan"
+                  >
+                    ×
+                  </button>
                 </div>
               )}
 
