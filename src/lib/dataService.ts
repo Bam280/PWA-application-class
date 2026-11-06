@@ -1,7 +1,7 @@
 import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, UserRole } from '../types';
 import { offlineStorage } from './offlineStorage';
 import { auth } from './firebase';
-import { ASSET_IMAGES } from './seedData';
+import { ASSET_IMAGES, DAYS_OF_WEEK } from './seedData';
 
 export type DatabaseProviderType = 'firestore' | 'custom_api' | 'local_offline';
 
@@ -139,16 +139,16 @@ export function normalizeSchedule(raw: any, index = 0): ScheduleItem {
   }
 
   const courseName = (raw.courseName || raw.course_name || raw.mata_kuliah || raw.title || raw.name || 'Mata Kuliah').toString();
-  const courseCode = (raw.courseCode || raw.course_code || raw.kode_mk || raw.code || 'MK-01').toString();
-  const dayOfWeek = parseDayOfWeekNumber(raw.dayOfWeek ?? raw.day_of_week ?? raw.hari);
-  const startTime = (raw.startTime || raw.start_time || raw.jam_mulai || raw.start || '08:00').toString();
-  const endTime = (raw.endTime || raw.end_time || raw.jam_selesai || raw.end || '10:00').toString();
-  const room = (raw.room || raw.ruangan || raw.ruang || raw.location || 'Ruang Sinabung Lt. 3').toString();
-  const building = (raw.building || raw.gedung || raw.kampus || 'BNI Corporate University').toString();
+  const courseCode = (raw.courseCode || raw.course_code || raw.kode_mk || raw.code || '').toString();
+  const dayOfWeek = parseDayOfWeekNumber(raw.dayOfWeek ?? raw.day_of_week ?? raw.hari ?? raw.day);
+  const startTime = (raw.startTime || raw.start_time || raw.jam_mulai || raw.start || raw.time || '08:00').toString();
+  const endTime = (raw.endTime || raw.end_time || raw.jam_selesai || raw.end || startTime).toString();
+  const room = (raw.room || raw.ruangan || raw.ruang || raw.location || '').toString();
+  const building = (raw.building || raw.gedung || raw.kampus || '').toString();
   const classType = ['offline', 'online', 'hybrid'].includes(raw.classType || raw.class_type)
     ? (raw.classType || raw.class_type)
     : 'offline';
-  const lecturer = (raw.lecturer || raw.speaker || raw.dosen || raw.instructor || 'Dosen Pengampu').toString();
+  const lecturer = (raw.lecturer || raw.speaker || raw.dosen || raw.instructor || '').toString();
   const speakerRole = raw.speakerRole || raw.speaker_role || raw.jabatan || raw.role;
   const divisionName = raw.divisionName || raw.division_name || raw.divisi;
   const notes = raw.notes || raw.catatan;
@@ -195,7 +195,7 @@ export function normalizeAnnouncement(raw: any, index = 0): Announcement {
   const id = (raw.id || raw._id || raw.announcement_id || raw.id_pengumuman || `ann-${Date.now()}-${index}`).toString();
   const title = (raw.title || raw.judul || 'Pengumuman Kelas').toString();
   const content = (raw.content || raw.isi || raw.deskripsi || raw.message || '').toString();
-  const publishedAt = raw.publishedAt || raw.published_at || raw.created_at || raw.tanggal || new Date().toISOString();
+  const publishedAt = raw.publishedAt || raw.published_at || raw.createdAt || raw.created_at || raw.tanggal || new Date().toISOString();
   const authorId = (raw.authorId || raw.author_id || 'admin').toString();
   const authorName = (raw.authorName || raw.author_name || raw.author || raw.pengirim || 'Admin Kelas').toString();
   const category = ['academic', 'exam', 'event', 'schedule_change'].includes(raw.category || raw.kategori)
@@ -204,7 +204,7 @@ export function normalizeAnnouncement(raw: any, index = 0): Announcement {
   const priority = ['urgent', 'important', 'normal'].includes(raw.priority || raw.prioritas)
     ? (raw.priority || raw.prioritas)
     : 'normal';
-  const readCount = Number(raw.readCount ?? raw.read_count ?? raw.dibaca ?? 0) || 0;
+  const readCount = Number(raw.readCount ?? raw.read_count ?? raw.reads ?? raw.dibaca ?? 0) || 0;
   const totalStudents = Number(raw.totalStudents ?? raw.total_students ?? 42) || 42;
 
   return {
@@ -240,9 +240,9 @@ export function normalizeReminder(raw: any, index = 0): ReminderItem {
   }
 
   const id = (raw.id || raw._id || raw.reminder_id || raw.id_pengingat || `rem-${Date.now()}-${index}`).toString();
-  const title = (raw.title || raw.judul || raw.name || 'Pengingat Agenda').toString();
-  const courseName = (raw.courseName || raw.course_name || raw.mata_kuliah || 'Mata Kuliah').toString();
-  const deadline = raw.deadline || raw.batas_waktu || raw.due_date || new Date(Date.now() + 86400000).toISOString();
+  const title = (raw.title || raw.task || raw.judul || raw.name || 'Pengingat Agenda').toString();
+  const courseName = (raw.courseName || raw.course_name || raw.mata_kuliah || '').toString();
+  const deadline = raw.deadline || raw.time || raw.batas_waktu || raw.due_date || new Date(Date.now() + 86400000).toISOString();
   const description = (raw.description || raw.deskripsi || raw.notes || '').toString();
   const priority = ['low', 'medium', 'high'].includes(raw.priority || raw.prioritas)
     ? (raw.priority || raw.prioritas)
@@ -296,6 +296,81 @@ export function normalizeStudentMember(raw: any, index = 0): StudentMember {
     attendanceRate,
     lastActive,
   };
+}
+
+/*
+ * Request bodies for the private API. It rejects unknown fields with 400 "Data tidak valid", so
+ * only the fields it accepts may be sent. See docs/ROLE_API.md section 10.
+ */
+export function toApiAnnouncement(item: Pick<Announcement, 'title' | 'content' | 'readCount'>) {
+  return { title: item.title, content: item.content, reads: item.readCount ?? 0 };
+}
+
+export function toApiSchedule(item: Pick<ScheduleItem, 'courseName' | 'dayOfWeek' | 'startTime' | 'room'>) {
+  const day = DAYS_OF_WEEK.find(d => d.value === item.dayOfWeek)?.label ?? DAYS_OF_WEEK[0].label;
+  return {
+    title: item.courseName,
+    day,
+    time: item.startTime,
+    ...(item.room ? { room: item.room } : {}),
+  };
+}
+
+export function toApiReminder(item: Pick<ReminderItem, 'title' | 'deadline' | 'isCompleted'>) {
+  const date = new Date(item.deadline);
+  return {
+    task: item.title,
+    time: isNaN(date.getTime()) ? item.deadline : date.toISOString(),
+    completed: Boolean(item.isCompleted),
+  };
+}
+
+/** Converts a stored time (ISO, from the API) to the local "YYYY-MM-DDTHH:mm" a datetime-local input needs. */
+export function toDatetimeLocalValue(value: string): string {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** "08:00 - 10:00", or just "08:00" when the end time is unknown (the API stores one time only). */
+export function formatScheduleTime(item: Pick<ScheduleItem, 'startTime' | 'endTime'>): string {
+  return item.endTime && item.endTime !== item.startTime ? `${item.startTime} - ${item.endTime}` : item.startTime;
+}
+
+/**
+ * Reads the reason out of an API error body: the message plus any per-field validation details.
+ * Understands the common shapes: { errors: [{ path, msg }] }, { errors: { field: [..] } },
+ * { issues: [..] } and { details: [..] }.
+ */
+export function extractApiErrorDetail(body: unknown): string {
+  if (!body || typeof body !== 'object') return typeof body === 'string' ? body : '';
+  const o = body as Record<string, any>;
+  const nested = o.error && typeof o.error === 'object' ? o.error : null;
+  const message = [o.message, typeof o.error === 'string' ? o.error : undefined, nested?.message].find(
+    (v): v is string => typeof v === 'string' && v.length > 0
+  );
+
+  const describeOne = (item: any): string => {
+    if (typeof item === 'string') return item;
+    if (!item || typeof item !== 'object') return '';
+    const rawField = item.path ?? item.field ?? item.param ?? item.property ?? item.key;
+    const field = Array.isArray(rawField) ? rawField.join('.') : rawField;
+    const text = item.msg ?? item.message ?? item.error ?? item.reason;
+    return [field, text].filter(Boolean).join(': ');
+  };
+
+  const raw = o.errors ?? o.issues ?? o.details ?? o.fields ?? nested?.errors ?? nested?.issues ?? nested?.details;
+  let details: string[] = [];
+  if (Array.isArray(raw)) {
+    details = raw.map(describeOne).filter(Boolean);
+  } else if (raw && typeof raw === 'object') {
+    details = Object.entries(raw).map(([field, value]) => `${field}: ${Array.isArray(value) ? value.join(', ') : String(value)}`);
+  } else if (typeof raw === 'string') {
+    details = [raw];
+  }
+
+  return [message, details.join('; ')].filter(Boolean).join(' - ');
 }
 
 export const DEFAULT_CAMPUS_API_URL = 'https://api-class.and-than.my.id/api';

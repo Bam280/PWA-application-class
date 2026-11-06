@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeApiUrl,
+  extractApiErrorDetail,
+  toApiAnnouncement,
+  toApiSchedule,
+  toApiReminder,
+  formatScheduleTime,
+  toDatetimeLocalValue,
   extractArrayPayload,
   normalizeSchedule,
   normalizeAnnouncement,
@@ -107,4 +113,76 @@ test('normalizeStudentMember safely handles member fields', () => {
   assert.equal(member.email, 'budi@kampus.ac.id');
   assert.equal(member.role, 'class_admin');
   assert.equal(member.attendanceRate, 98);
+});
+
+test('extractApiErrorDetail reads the message and per-field details', () => {
+  assert.equal(extractApiErrorDetail({ message: 'Data tidak valid' }), 'Data tidak valid');
+  assert.equal(extractApiErrorDetail({ error: 'Ditolak' }), 'Ditolak');
+  assert.equal(
+    extractApiErrorDetail({ message: 'Data tidak valid', errors: [{ path: 'classId', msg: 'wajib diisi' }] }),
+    'Data tidak valid - classId: wajib diisi'
+  );
+  assert.equal(
+    extractApiErrorDetail({ message: 'Invalid', errors: { title: ['required', 'too short'], room: 'required' } }),
+    'Invalid - title: required, too short; room: required'
+  );
+  assert.equal(
+    extractApiErrorDetail({ issues: [{ path: ['author', 'id'], message: 'Required' }] }),
+    'author.id: Required'
+  );
+  assert.equal(
+    extractApiErrorDetail({ error: { message: 'Bad', details: [{ field: 'day', reason: 'range' }] } }),
+    'Bad - day: range'
+  );
+  assert.equal(extractApiErrorDetail(null), '');
+  assert.equal(extractApiErrorDetail({ ok: false }), '');
+});
+
+test('request bodies contain only the fields the API accepts', () => {
+  assert.deepEqual(toApiAnnouncement({ title: 'A', content: 'B', readCount: 0 }), { title: 'A', content: 'B', reads: 0 });
+  assert.deepEqual(
+    toApiSchedule({ courseName: 'Jaringan Komputer', dayOfWeek: 1, startTime: '08:00', room: 'Lab 3' }),
+    { title: 'Jaringan Komputer', day: 'Senin', time: '08:00', room: 'Lab 3' }
+  );
+  assert.deepEqual(
+    toApiSchedule({ courseName: 'Basis Data', dayOfWeek: 5, startTime: '13:00', room: '' }),
+    { title: 'Basis Data', day: 'Jumat', time: '13:00' }
+  );
+  assert.deepEqual(
+    toApiReminder({ title: 'Laporan', deadline: '2026-11-10T16:59:00.000Z', isCompleted: false }),
+    { task: 'Laporan', time: '2026-11-10T16:59:00.000Z', completed: false }
+  );
+});
+
+test('rows from the API are read back without invented values', () => {
+  const sch = normalizeSchedule({ id: 'u1', title: 'Jaringan Komputer', day: 'Rabu', time: '13:00', room: 'Lab 3' });
+  assert.equal(sch.id, 'u1');
+  assert.equal(sch.courseName, 'Jaringan Komputer');
+  assert.equal(sch.dayOfWeek, 3);
+  assert.equal(sch.startTime, '13:00');
+  assert.equal(sch.endTime, '13:00');
+  assert.equal(sch.room, 'Lab 3');
+  assert.equal(sch.building, '');
+  assert.equal(sch.lecturer, '');
+  assert.equal(sch.courseCode, '');
+  assert.equal(formatScheduleTime(sch), '13:00');
+  assert.equal(formatScheduleTime({ startTime: '08:00', endTime: '10:00' }), '08:00 - 10:00');
+
+  const ann = normalizeAnnouncement({ id: 'u2', title: 'A', content: 'B', reads: 7, createdAt: '2026-11-06T03:32:00.000Z' });
+  assert.equal(ann.id, 'u2');
+  assert.equal(ann.readCount, 7);
+  assert.equal(ann.publishedAt, '2026-11-06T03:32:00.000Z');
+
+  const rem = normalizeReminder({ id: 'u3', task: 'Laporan', time: '2026-11-10T23:59:00+07:00', completed: true });
+  assert.equal(rem.id, 'u3');
+  assert.equal(rem.title, 'Laporan');
+  assert.equal(rem.deadline, '2026-11-10T23:59:00+07:00');
+  assert.equal(rem.isCompleted, true);
+  assert.equal(rem.courseName, '');
+});
+
+test('toDatetimeLocalValue produces the local value a datetime-local input can show', () => {
+  const iso = new Date(2026, 10, 10, 23, 59).toISOString();
+  assert.equal(toDatetimeLocalValue(iso), '2026-11-10T23:59');
+  assert.equal(toDatetimeLocalValue('bukan tanggal'), 'bukan tanggal');
 });

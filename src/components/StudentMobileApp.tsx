@@ -55,7 +55,7 @@ import {
   downloadICSFile,
 } from '../lib/calendarSync';
 import { notificationService } from '../lib/notifications';
-import { dataService, DatabaseProviderType, AuthHeaderMode } from '../lib/dataService';
+import { dataService, DatabaseProviderType, AuthHeaderMode, formatScheduleTime } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
 import { MembersErrorBanner } from './MembersErrorBanner';
 import { PendingApprovalsPanel } from './PendingApprovalsPanel';
@@ -270,11 +270,11 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     );
   };
 
-  const handleCreateReminder = (e: React.FormEvent) => {
+  const handleCreateReminder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReminderTitle.trim()) return;
 
-    addReminder({
+    const saved = await addReminder({
       title: newReminderTitle,
       courseName: newReminderCourse,
       deadline: newReminderDeadline,
@@ -283,6 +283,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
       priority: 'high',
       isCompleted: false,
     });
+    if (!saved) return;
 
     setNewReminderTitle('');
     setShowAddReminderModal(false);
@@ -292,7 +293,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     e.preventDefault();
     if (!mobileAnnTitle.trim() || !mobileAnnContent.trim()) return;
 
-    await addAnnouncement({
+    const saved = await addAnnouncement({
       title: mobileAnnTitle,
       content: mobileAnnContent,
       priority: mobileAnnPriority,
@@ -300,6 +301,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
       authorId: user?.id || 'admin',
       authorName: user?.displayName || (isSuperAdmin ? 'Super Admin' : 'Admin Kelas'),
     });
+    if (!saved) return;
 
     setMobileAnnTitle('');
     setMobileAnnContent('');
@@ -310,7 +312,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
     e.preventDefault();
     if (!mobileSchedCourse.trim() || !mobileSchedCode.trim()) return;
 
-    await addSchedule({
+    const saved = await addSchedule({
       courseName: mobileSchedCourse,
       courseCode: mobileSchedCode,
       divisionName: mobileSchedDivision,
@@ -323,6 +325,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
       building: 'BNI Corporate University Jakarta',
       classType: 'offline',
     });
+    if (!saved) return;
 
     setMobileSchedCourse('');
     setMobileSchedCode('');
@@ -651,7 +654,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
+                            <span className="empty:hidden text-[10px] font-mono text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
                               {item.courseCode}
                             </span>
                             {item.divisionName && (
@@ -674,7 +677,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                           </div>
                         </div>
                         <span className="text-[11px] font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 shrink-0">
-                          {item.startTime} - {item.endTime}
+                          {formatScheduleTime(item)}
                         </span>
                       </div>
 
@@ -798,7 +801,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                           <div className="flex items-start justify-between gap-2">
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                                <span className="text-[10px] font-mono text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
+                                <span className="empty:hidden text-[10px] font-mono text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
                                   {item.courseCode}
                                 </span>
                                 {item.divisionName && (
@@ -826,7 +829,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
                             <div className="text-right shrink-0">
                               <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 block">
-                                {item.startTime} - {item.endTime}
+                                {formatScheduleTime(item)}
                               </span>
                             </div>
                           </div>
@@ -834,7 +837,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                           <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-500">
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              {item.room} · {item.building}
+                              {[item.room, item.building].filter(Boolean).join(' · ')}
                             </span>
                             <a
                               href={getGoogleCalendarUrlForSchedule(item)}

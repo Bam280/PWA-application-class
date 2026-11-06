@@ -232,3 +232,29 @@ User hanya melihat pesan singkat dan kodenya. Cara mengatasinya ada di sini, khu
 | `auth/admin-restricted-operation` | "Enable create (sign-up)" dimatikan, jadi akun baru tidak bisa dibuat. Akun yang sudah ada tetap bisa login. | Firebase Console → Authentication → Settings → User actions → aktifkan **Enable create (sign-up)**. |
 | `auth/unauthorized-domain` | Alamat aplikasi belum terdaftar di Firebase. | Authentication → Settings → Authorized domains → tambahkan domainnya. |
 | `auth/operation-not-allowed` | Metode login belum aktif. | Authentication → Sign-in method → aktifkan **Google** atau **Email/Password**. |
+
+## 10. Format data jadwal, pengumuman, dan pengingat
+
+Semua request memakai Firebase ID Token (`Authorization: Bearer <token>`). Server menolak field yang tidak
+dikenal dengan `400 Data tidak valid`, jadi aplikasi hanya mengirim field berikut:
+
+| Endpoint | Field yang dikirim |
+|---|---|
+| `POST /announcements` | `title`, `content`, `reads` |
+| `POST /schedules` | `title`, `day` (mis. `Senin`), `time` (mis. `08:00`), `room` (opsional) |
+| `POST /reminders` | `task`, `time` (ISO 8601), `completed` |
+
+ID dibuat oleh server. Aplikasi memakai `id` dari balasan server, dan baru menampilkan data setelah server
+menerimanya. `PUT` memakai format yang sama; endpoint `PUT` dan `POST /announcements/:id/reads` belum dipastikan
+ada di server.
+
+**Isian form yang saat ini tidak disimpan server**, jadi tidak muncul lagi setelah data disimpan:
+
+| Data | Field |
+|---|---|
+| Pengumuman | prioritas, kategori, nama pengirim, lampiran |
+| Jadwal | kode sesi, divisi, pembicara, jabatan pembicara, jam selesai, gedung, tipe kelas, catatan |
+| Pengingat | mata kuliah, tipe, prioritas, deskripsi |
+
+Supaya tersimpan, server perlu menambahkan kolom dan menerimanya di validasi, lalu `toApiAnnouncement`,
+`toApiSchedule`, dan `toApiReminder` di `src/lib/dataService.ts` ikut mengirimnya.
