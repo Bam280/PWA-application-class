@@ -71,7 +71,7 @@ const MainApp: React.FC = () => {
   );
 
   const view: AppView = isAdmin ? viewOverride ?? (isDesktop ? 'portal' : 'app') : 'app';
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.length;
 
   // Reset the manual view choice whenever the signed-in account changes.
   useEffect(() => {

@@ -63,15 +63,17 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
         </div>
 
         {/* Action bar */}
-        <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs">
-          <button
-            onClick={() => notificationService.markAllAsRead()}
-            className="text-slate-600 hover:text-amber-700 flex items-center gap-1.5 font-bold transition-colors"
-          >
-            <Check className="w-3.5 h-3.5" />
-            Tandai semua dibaca
-          </button>
-        </div>
+        {notifications.length > 0 && (
+          <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs">
+            <button
+              onClick={() => notificationService.markAllAsRead()}
+              className="text-slate-600 hover:text-amber-700 flex items-center gap-1.5 font-bold transition-colors"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Tandai semua dibaca
+            </button>
+          </div>
+        )}
 
         {/* Device notifications */}
         <div className="px-5 py-3 border-b border-slate-100 flex items-start justify-between gap-3 text-xs">
@@ -100,20 +102,18 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({ isOpen, on
               <div
                 key={item.id}
                 onClick={() => notificationService.markAsRead(item.id)}
-                className={`pt-2.5 first:pt-0 p-3 rounded-2xl transition-all cursor-pointer ${
-                  item.read ? 'bg-slate-50/70 opacity-70' : 'bg-amber-50/50 hover:bg-amber-50 border border-amber-200/80 shadow-2xs'
-                }`}
+                className="p-3 rounded-2xl transition-all cursor-pointer bg-amber-50/50 hover:bg-amber-50 border border-amber-200/80 shadow-2xs"
               >
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 p-1.5 rounded-lg bg-white border border-slate-200">
                     {getTypeIcon(item.type)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="text-xs font-bold text-slate-900 min-w-0 break-words">{item.title}</h4>
                       <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{formatNotificationTime(item.createdAt)}</span>
                     </div>
-                    <p className="text-xs text-slate-600 mt-0.5 line-clamp-2 leading-relaxed">{item.body}</p>
+                    <p className="text-xs text-slate-600 mt-0.5 leading-relaxed break-words">{item.body}</p>
                   </div>
                 </div>
               </div>

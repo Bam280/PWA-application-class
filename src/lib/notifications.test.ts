@@ -43,3 +43,41 @@ test('getDeviceState recognises each device situation', () => {
     for (const [name, value] of Object.entries(original)) stub(name, value);
   }
 });
+
+test('reading a notification removes it, also after a reload', () => {
+  const g = globalThis as Record<string, unknown>;
+  const original = g.localStorage;
+  const store = new Map<string, string>();
+  const stub = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  Object.defineProperty(g, 'localStorage', { value: stub, configurable: true, writable: true });
+
+  try {
+    notificationService.setAccount('user-a');
+    notificationService.dispatchNotification('Satu', 'isi');
+    notificationService.dispatchNotification('Dua', 'isi');
+    notificationService.dispatchNotification('Tiga', 'isi');
+    assert.equal(notificationService.getNotifications().length, 3);
+
+    const dua = notificationService.getNotifications().find(n => n.title === 'Dua')!;
+    notificationService.markAsRead(dua.id);
+    assert.deepEqual(notificationService.getNotifications().map(n => n.title), ['Tiga', 'Satu']);
+
+    notificationService.setAccount(null);
+    notificationService.setAccount('user-a');
+    assert.deepEqual(notificationService.getNotifications().map(n => n.title), ['Tiga', 'Satu']);
+
+    notificationService.markAllAsRead();
+    assert.equal(notificationService.getNotifications().length, 0);
+
+    // History saved by an older version, which kept entries after they were read.
+    store.set('uniclass_notifications_user-b', JSON.stringify([
+      { id: '1', title: 'Sudah dibaca', body: '', type: 'normal', createdAt: '2026-11-06T10:00:00.000Z', read: true },
+      { id: '2', title: 'Belum dibaca', body: '', type: 'normal', createdAt: '2026-11-06T10:00:00.000Z', read: false },
+    ]));
+    notificationService.setAccount('user-b');
+    assert.deepEqual(notificationService.getNotifications().map(n => n.title), ['Belum dibaca']);
+  } finally {
+    notificationService.setAccount(null);
+    Object.defineProperty(g, 'localStorage', { value: original, configurable: true, writable: true });
+  }
+});

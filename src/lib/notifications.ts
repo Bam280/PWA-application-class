@@ -5,7 +5,6 @@ export interface InAppNotification {
   type: 'urgent' | 'important' | 'normal' | 'reminder';
   /** ISO time the notification was created; shown relative to now. */
   createdAt: string;
-  read: boolean;
 }
 
 /** What this device can do about notifications right now. */
@@ -55,7 +54,8 @@ class NotificationService {
     if (accountId) {
       try {
         const stored = JSON.parse(localStorage.getItem(storageKey(accountId)) || '[]');
-        if (Array.isArray(stored)) this.notifications = stored;
+        // Older versions kept entries after they were read.
+        if (Array.isArray(stored)) this.notifications = stored.filter((n: { read?: boolean }) => !n.read);
       } catch {
         // Unreadable history: start empty.
       }
@@ -148,7 +148,6 @@ class NotificationService {
         body,
         type,
         createdAt: new Date().toISOString(),
-        read: false,
       },
       ...this.notifications,
     ].slice(0, MAX_STORED);
@@ -165,14 +164,15 @@ class NotificationService {
     return [...this.notifications];
   }
 
+  /** The notification center only holds unread entries, so reading one removes it. */
   public markAsRead(id: string) {
-    this.notifications = this.notifications.map(n => (n.id === id ? { ...n, read: true } : n));
+    this.notifications = this.notifications.filter(n => n.id !== id);
     this.persist();
     this.notifyListeners();
   }
 
   public markAllAsRead() {
-    this.notifications = this.notifications.map(n => ({ ...n, read: true }));
+    this.notifications = [];
     this.persist();
     this.notifyListeners();
   }
