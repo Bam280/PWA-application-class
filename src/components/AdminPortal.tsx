@@ -43,9 +43,7 @@ import {
   StudentMember,
   UserRole,
   ROLE_DEFINITIONS,
-  BNI_IT_DIVISIONS,
   BNI_SPEAKER_ROLES,
-  BNI_TRAINING_ROOMS,
 } from '../types';
 import { DAYS_OF_WEEK, ASSET_IMAGES } from '../lib/seedData';
 import { generateSchedulesICS, downloadICSFile } from '../lib/calendarSync';
@@ -160,14 +158,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   const [showAddSchedule, setShowAddSchedule] = useState(false);
   const [schedViewMode, setSchedViewMode] = useState<'calendar' | 'table'>('calendar');
   const [schedCourse, setSchedCourse] = useState('');
-  const [schedCode, setSchedCode] = useState('');
-  const [schedDivision, setSchedDivision] = useState<string>(BNI_IT_DIVISIONS[0]);
+  const [schedDivision, setSchedDivision] = useState('');
   const [schedLecturer, setSchedLecturer] = useState('Bambang Wijaya, S.T., M.Kom.');
   const [schedSpeakerRole, setSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
   const [schedDay, setSchedDay] = useState<number>(1);
   const [schedStart, setSchedStart] = useState('08:30');
   const [schedEnd, setSchedEnd] = useState('11:30');
-  const [schedRoom, setSchedRoom] = useState(BNI_TRAINING_ROOMS[0]);
+  const [schedRoom, setSchedRoom] = useState('');
   const [schedBuilding, setSchedBuilding] = useState('BNI Corporate University Jakarta');
   const [schedType, setSchedType] = useState<ScheduleItem['classType']>('offline');
   const [schedNotes, setSchedNotes] = useState('');
@@ -184,8 +181,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   // Edit Modals State
   const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(null);
   const [editSchedCourse, setEditSchedCourse] = useState('');
-  const [editSchedCode, setEditSchedCode] = useState('');
-  const [editSchedDivision, setEditSchedDivision] = useState<string>(BNI_IT_DIVISIONS[0]);
+  const [editSchedDivision, setEditSchedDivision] = useState('');
   const [editSchedLecturer, setEditSchedLecturer] = useState('');
   const [editSchedSpeakerRole, setEditSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
   const [editSchedDay, setEditSchedDay] = useState(1);
@@ -267,18 +263,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schedCourse.trim()) return;
+    if (!schedCourse.trim() || !schedDivision.trim() || !schedRoom.trim()) return;
 
     const saved = await addSchedule({
       courseName: schedCourse,
-      courseCode: schedCode,
-      divisionName: schedDivision,
+      courseCode: '',
+      divisionName: schedDivision.trim(),
       lecturer: schedLecturer,
       speakerRole: schedSpeakerRole,
       dayOfWeek: schedDay,
       startTime: schedStart,
       endTime: schedEnd,
-      room: schedRoom,
+      room: schedRoom.trim(),
       building: schedBuilding,
       classType: schedType,
       notes: schedNotes,
@@ -286,7 +282,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     if (!saved) return;
 
     setSchedCourse('');
-    setSchedCode('');
     setSchedNotes('');
     setShowAddSchedule(false);
   };
@@ -294,8 +289,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   const openEditSchedule = (sch: ScheduleItem) => {
     setEditingSchedule(sch);
     setEditSchedCourse(sch.courseName);
-    setEditSchedCode(sch.courseCode);
-    setEditSchedDivision(sch.divisionName || BNI_IT_DIVISIONS[0]);
+    setEditSchedDivision(sch.divisionName || '');
     setEditSchedLecturer(sch.lecturer);
     setEditSchedSpeakerRole(sch.speakerRole || BNI_SPEAKER_ROLES[0]);
     setEditSchedDay(sch.dayOfWeek);
@@ -313,8 +307,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
     const saved = await updateSchedule(editingSchedule.id, {
       courseName: editSchedCourse,
-      courseCode: editSchedCode,
-      divisionName: editSchedDivision,
+      divisionName: editSchedDivision.trim(),
       lecturer: editSchedLecturer,
       speakerRole: editSchedSpeakerRole,
       dayOfWeek: editSchedDay,
@@ -797,21 +790,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     <label className="block text-slate-700 font-semibold mb-1">
                       Nama Divisi BNI <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Divisi Enterprise Architecture & Strategy (EAS)"
                       value={schedDivision}
                       onChange={(e) => setSchedDivision(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                    >
-                      {BNI_IT_DIVISIONS.map((div) => (
-                        <option key={div} value={div}>
-                          {div}
-                        </option>
-                      ))}
-                    </select>
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                    />
                   </div>
 
                   {/* 2. Materi / Topik ODP */}
-                  <div>
+                  <div className="sm:col-span-2">
                     <label className="block text-slate-700 font-semibold mb-1">
                       Materi / Topik Pelatihan ODP <span className="text-rose-500">*</span>
                     </label>
@@ -825,21 +815,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     />
                   </div>
 
-                  {/* 3. Kode Modul */}
-                  <div>
-                    <label className="block text-slate-700 font-semibold mb-1">
-                      Kode Modul Sesi <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="ODP-EAS-01"
-                      value={schedCode}
-                      onChange={(e) => setSchedCode(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono font-bold"
-                    />
-                  </div>
-
-                  {/* 4. Pembicara & Role (Dept Head / Team Leader) */}
+                  {/* 3. Pembicara & Role (Dept Head / Team Leader) */}
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
                       Nama Pembicara <span className="text-rose-500">*</span>
@@ -870,22 +846,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     </select>
                   </div>
 
-                  {/* 5. Ruang Kelas yang Digunakan */}
+                  {/* 4. Ruang Kelas yang Digunakan */}
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
                       Ruang Kelas yang Digunakan <span className="text-rose-500">*</span>
                     </label>
-                    <select
+                    <input
+                      type="text"
+                      required
+                      placeholder="Contoh: Ruang Sinabung Lt. 3 - BNI Corpu Jakarta"
                       value={schedRoom}
                       onChange={(e) => setSchedRoom(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                    >
-                      {BNI_TRAINING_ROOMS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                    />
                   </div>
 
                   <div>
@@ -898,7 +871,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     />
                   </div>
 
-                  {/* 6. Jadwal Hari & Jam */}
+                  {/* 5. Jadwal Hari & Jam */}
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
                       Jadwal Hari <span className="text-rose-500">*</span>
@@ -2253,20 +2226,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
             <form onSubmit={handleUpdateSchedule} className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="sm:col-span-2">
                 <label className="block text-slate-700 font-semibold mb-1">Nama Divisi BNI</label>
-                <select
+                <input
+                  type="text"
+                  placeholder="Contoh: Divisi Enterprise Architecture & Strategy (EAS)"
                   value={editSchedDivision}
                   onChange={(e) => setEditSchedDivision(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                >
-                  {BNI_IT_DIVISIONS.map((div) => (
-                    <option key={div} value={div}>
-                      {div}
-                    </option>
-                  ))}
-                </select>
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                />
               </div>
 
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-slate-700 font-semibold mb-1">Materi / Topik Pelatihan ODP</label>
                 <input
                   type="text"
@@ -2274,16 +2243,6 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                   value={editSchedCourse}
                   onChange={(e) => setEditSchedCourse(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Kode Modul Sesi</label>
-                <input
-                  type="text"
-                  value={editSchedCode}
-                  onChange={(e) => setEditSchedCode(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono font-bold"
                 />
               </div>
 
