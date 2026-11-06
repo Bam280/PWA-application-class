@@ -77,6 +77,32 @@ export function isSameDay(d1: Date, d2: Date): boolean {
   );
 }
 
+/** Local calendar date as "YYYY-MM-DD", the format schedules are stored in. */
+export function toDateKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Reads "YYYY-MM-DD" as local midnight (`new Date(key)` would read it as UTC). Null if it is not a real date. */
+export function parseDateKey(key?: string | null): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key ?? '');
+  if (!match) return null;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+/** 1 = Monday ... 7 = Sunday. */
+export function dayOfWeekOf(d: Date): number {
+  return d.getDay() === 0 ? 7 : d.getDay();
+}
+
+/** The seven days (Monday first) of the week `weekOffset` weeks away from the one holding `from`. */
+export function getWeekDays(from: Date, weekOffset = 0): Date[] {
+  const monday = new Date(from.getFullYear(), from.getMonth(), from.getDate() - dayOfWeekOf(from) + 1 + weekOffset * 7);
+  return Array.from({ length: 7 }, (_, i) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i));
+}
+
 /**
  * Formats a date into "Senin, 4 Nov 2026"
  */
@@ -162,10 +188,9 @@ export function getMonthCalendarWeeks(
 
       const dayOfWeek = dayDate.getDay() === 0 ? 7 : dayDate.getDay();
 
-      // Schedules for this weekday (active courses on this day of week)
-      const daySchedules = isCurrentMonth
-        ? schedules.filter((s) => s.dayOfWeek === dayOfWeek)
-        : [];
+      // Schedules on this exact date
+      const dayKey = toDateKey(dayDate);
+      const daySchedules = schedules.filter((s) => s.date === dayKey);
       const hasSched = daySchedules.length > 0;
       weekScheduleCount += daySchedules.length;
 

@@ -2,6 +2,7 @@ import { ScheduleItem, Announcement, ReminderItem, ReadReceipt, StudentMember, U
 import { offlineStorage } from './offlineStorage';
 import { auth } from './firebase';
 import { ASSET_IMAGES, DAYS_OF_WEEK } from './seedData';
+import { dayOfWeekOf, formatFullIndonesianDate, parseDateKey, toDateKey } from './calendarUtils';
 
 export type DatabaseProviderType = 'firestore' | 'custom_api' | 'local_offline';
 
@@ -118,6 +119,15 @@ export function parseDayOfWeekNumber(val: unknown): number {
   return dayMap[str] || 1;
 }
 
+/** The API's `day` holds the session's date. Older rows hold a weekday name, which is not a date. */
+function parseScheduleDate(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (parseDateKey(value)) return value;
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(value)) return undefined;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? undefined : toDateKey(date);
+}
+
 /**
  * Normalizes Schedule items from raw API responses (handles snake_case & missing fields).
  */
@@ -140,7 +150,9 @@ export function normalizeSchedule(raw: any, index = 0): ScheduleItem {
 
   const courseName = (raw.courseName || raw.course_name || raw.mata_kuliah || raw.title || raw.name || 'Mata Kuliah').toString();
   const courseCode = (raw.courseCode || raw.course_code || raw.kode_mk || raw.code || '').toString();
-  const dayOfWeek = parseDayOfWeekNumber(raw.dayOfWeek ?? raw.day_of_week ?? raw.hari ?? raw.day);
+  const date = parseScheduleDate(raw.date ?? raw.tanggal ?? raw.day);
+  const parsedDate = parseDateKey(date);
+  const dayOfWeek = parsedDate ? dayOfWeekOf(parsedDate) : parseDayOfWeekNumber(raw.dayOfWeek ?? raw.day_of_week ?? raw.hari ?? raw.day);
   const startTime = (raw.startTime || raw.start_time || raw.jam_mulai || raw.start || raw.time || '08:00').toString();
   const endTime = (raw.endTime || raw.end_time || raw.jam_selesai || raw.end || startTime).toString();
   const room = (raw.room || raw.ruangan || raw.ruang || raw.location || '').toString();
@@ -159,6 +171,7 @@ export function normalizeSchedule(raw: any, index = 0): ScheduleItem {
     id,
     courseName,
     courseCode,
+    ...(date ? { date } : {}),
     dayOfWeek,
     startTime,
     endTime,
@@ -306,8 +319,8 @@ export function toApiAnnouncement(item: Pick<Announcement, 'title' | 'content' |
   return { title: item.title, content: item.content, reads: item.readCount ?? 0 };
 }
 
-export function toApiSchedule(item: Pick<ScheduleItem, 'courseName' | 'dayOfWeek' | 'startTime' | 'room'>) {
-  const day = DAYS_OF_WEEK.find(d => d.value === item.dayOfWeek)?.label ?? DAYS_OF_WEEK[0].label;
+export function toApiSchedule(item: Pick<ScheduleItem, 'courseName' | 'date' | 'dayOfWeek' | 'startTime' | 'room'>) {
+  const day = item.date ?? DAYS_OF_WEEK.find(d => d.value === item.dayOfWeek)?.label ?? DAYS_OF_WEEK[0].label;
   return {
     title: item.courseName,
     day,
@@ -329,6 +342,10 @@ export function toApiReminder(item: Pick<ReminderItem, 'title' | 'deadline' | 'i
 export function describeScheduleChanges(before: ScheduleItem[], after: ScheduleItem[]) {
   const afterById = new Map(after.map(item => [item.id, item]));
   const dayLabel = (day: number) => DAYS_OF_WEEK.find(d => d.value === day)?.label ?? String(day);
+  const dateLabel = (key?: string) => {
+    const date = parseDateKey(key);
+    return date ? formatFullIndonesianDate(date) : '-';
+  };
   const changed: { item: ScheduleItem; details: string }[] = [];
   const removed: ScheduleItem[] = [];
 
@@ -339,7 +356,8 @@ export function describeScheduleChanges(before: ScheduleItem[], after: ScheduleI
       continue;
     }
     const parts: string[] = [];
-    if (old.dayOfWeek !== now.dayOfWeek) parts.push(`Hari: ${dayLabel(old.dayOfWeek)} → ${dayLabel(now.dayOfWeek)}`);
+    if (old.date !== now.date) parts.push(`Tanggal: ${dateLabel(old.date)} → ${dateLabel(now.date)}`);
+    else if (old.dayOfWeek !== now.dayOfWeek) parts.push(`Hari: ${dayLabel(old.dayOfWeek)} → ${dayLabel(now.dayOfWeek)}`);
     if (old.startTime !== now.startTime) parts.push(`Jam: ${old.startTime} → ${now.startTime}`);
     if (old.room !== now.room) parts.push(`Ruang: ${old.room || '-'} → ${now.room || '-'}`);
     if (old.courseName !== now.courseName) parts.push(`Nama: ${old.courseName} → ${now.courseName}`);

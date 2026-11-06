@@ -209,3 +209,25 @@ test('describeScheduleChanges reports edits and removals, and ignores new or unc
   assert.equal(changed[0].details, 'Hari: Senin → Selasa · Jam: 08:00 → 09:00');
   assert.deepEqual(removed.map(r => r.id), ['b']);
 });
+
+test('schedule dates travel through the API day field', () => {
+  assert.deepEqual(
+    toApiSchedule({ courseName: 'Sesi', date: '2026-11-10', dayOfWeek: 2, startTime: '08:00', room: 'Lab 3' }),
+    { title: 'Sesi', day: '2026-11-10', time: '08:00', room: 'Lab 3' }
+  );
+
+  const dated = normalizeSchedule({ id: 'u1', title: 'Sesi', day: '2026-11-10', time: '08:00' });
+  assert.equal(dated.date, '2026-11-10');
+  assert.equal(dated.dayOfWeek, 2);
+
+  const legacy = normalizeSchedule({ id: 'u2', title: 'Lama', day: 'Rabu', time: '08:00' });
+  assert.equal(legacy.date, undefined);
+  assert.equal(legacy.dayOfWeek, 3);
+});
+
+test('describeScheduleChanges reports a moved date', () => {
+  const before = normalizeSchedule({ id: 'a', title: 'Sesi', day: '2026-11-10', time: '08:00' });
+  const after = normalizeSchedule({ id: 'a', title: 'Sesi', day: '2026-11-17', time: '08:00' });
+  const { changed } = describeScheduleChanges([before], [after]);
+  assert.equal(changed[0].details, 'Tanggal: Selasa, 10 Nov 2026 → Selasa, 17 Nov 2026');
+});

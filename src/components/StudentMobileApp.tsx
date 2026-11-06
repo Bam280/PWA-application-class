@@ -33,6 +33,7 @@ import {
   LogOut,
   LayoutDashboard,
   UserCheck,
+  ChevronLeft,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClassData } from '../context/ClassDataContext';
@@ -52,6 +53,7 @@ import {
   getGoogleCalendarUrlForReminder,
   downloadICSFile,
 } from '../lib/calendarSync';
+import { dayOfWeekOf, formatShortIndonesianDate, getWeekDays, parseDateKey, toDateKey } from '../lib/calendarUtils';
 import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode, formatScheduleTime } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
@@ -144,7 +146,8 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
   // Schedule filtering by day (default to today's day 1-7)
   const currentDayOfWeek = new Date().getDay() === 0 ? 7 : new Date().getDay();
-  const [selectedDay, setSelectedDay] = useState<number>(currentDayOfWeek <= 5 ? currentDayOfWeek : 1);
+  const [selectedDay, setSelectedDay] = useState<number>(currentDayOfWeek);
+  const [dailyWeekOffset, setDailyWeekOffset] = useState(0);
   const [scheduleViewMode, setScheduleViewMode] = useState<'calendar' | 'daily'>('calendar');
 
   // Announcement filtering and detail modal
@@ -172,7 +175,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
   const [mobileSchedDivision, setMobileSchedDivision] = useState('');
   const [mobileSchedLecturer, setMobileSchedLecturer] = useState('');
   const [mobileSchedSpeakerRole, setMobileSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
-  const [mobileSchedDay, setMobileSchedDay] = useState(1);
+  const [mobileSchedDate, setMobileSchedDate] = useState(() => toDateKey(new Date()));
   const [mobileSchedStart, setMobileSchedStart] = useState('08:30');
   const [mobileSchedEnd, setMobileSchedEnd] = useState('11:30');
   const [mobileSchedRoom, setMobileSchedRoom] = useState('');
@@ -195,17 +198,22 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
   const [mobTestResult, setMobTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [mobSaveSuccess, setMobSaveSuccess] = useState(false);
 
-  // Filtered schedules for selected day
-  const daySchedules = useMemo(() => {
-    return schedules
-      .filter(s => s.dayOfWeek === selectedDay)
-      .sort((a, b) => (a?.startTime || '').localeCompare(b?.startTime || ''));
-  }, [schedules, selectedDay]);
+  // Days of the week shown in "Mode Harian"
+  const dailyWeekDays = useMemo(() => getWeekDays(new Date(), dailyWeekOffset), [dailyWeekOffset]);
 
-  // Today's next upcoming class
+  // Schedules on the selected date
+  const daySchedules = useMemo(() => {
+    const key = toDateKey(dailyWeekDays[selectedDay - 1]);
+    return schedules
+      .filter(s => s.date === key)
+      .sort((a, b) => (a?.startTime || '').localeCompare(b?.startTime || ''));
+  }, [schedules, dailyWeekDays, selectedDay]);
+
+  // Today's classes
   const todayClasses = useMemo(() => {
-    return schedules.filter(s => s.dayOfWeek === currentDayOfWeek);
-  }, [schedules, currentDayOfWeek]);
+    const key = toDateKey(new Date());
+    return schedules.filter(s => s.date === key);
+  }, [schedules]);
 
   // Filtered announcements
   const filteredAnnouncements = useMemo(() => {
@@ -308,7 +316,8 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
   const handleMobileCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobileSchedCourse.trim() || !mobileSchedDivision.trim() || !mobileSchedRoom.trim()) return;
+    const date = parseDateKey(mobileSchedDate);
+    if (!date || !mobileSchedCourse.trim() || !mobileSchedDivision.trim() || !mobileSchedRoom.trim()) return;
 
     const saved = await addSchedule({
       courseName: mobileSchedCourse,
@@ -316,7 +325,8 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
       divisionName: mobileSchedDivision.trim(),
       lecturer: mobileSchedLecturer,
       speakerRole: mobileSchedSpeakerRole,
-      dayOfWeek: mobileSchedDay,
+      date: mobileSchedDate,
+      dayOfWeek: dayOfWeekOf(date),
       startTime: mobileSchedStart,
       endTime: mobileSchedEnd,
       room: mobileSchedRoom.trim(),
@@ -765,9 +775,28 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
               ) : (
                 /* DAILY DIRECT VIEW MODE */
                 <div className="space-y-3">
-                  {/* Day filter pills */}
-                  <div className="grid grid-cols-6 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                    {DAYS_OF_WEEK.slice(0, 6).map((day) => (
+                  {/* Week switcher and day pills */}
+                  <div className="flex items-center justify-between text-xs">
+                    <button
+                      onClick={() => setDailyWeekOffset((w) => w - 1)}
+                      aria-label="Minggu sebelumnya"
+                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="font-bold text-slate-800">
+                      {formatShortIndonesianDate(dailyWeekDays[0])} - {formatShortIndonesianDate(dailyWeekDays[6])}
+                    </span>
+                    <button
+                      onClick={() => setDailyWeekOffset((w) => w + 1)}
+                      aria-label="Minggu berikutnya"
+                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-7 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    {DAYS_OF_WEEK.map((day, index) => (
                       <button
                         key={day.value}
                         onClick={() => setSelectedDay(day.value)}
@@ -777,7 +806,8 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        {day.short}
+                        <span className="block">{day.short}</span>
+                        <span className="block text-[10px] font-medium">{dailyWeekDays[index].getDate()}</span>
                       </button>
                     ))}
                   </div>
@@ -787,7 +817,7 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                     {daySchedules.length === 0 ? (
                       <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl shadow-xs">
                         <CalendarIcon className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                        <p className="text-xs text-slate-500">Tidak ada jadwal kuliah di hari ini.</p>
+                        <p className="text-xs text-slate-500">Tidak ada jadwal kuliah di tanggal ini.</p>
                       </div>
                     ) : (
                       daySchedules.map((item) => (
@@ -1730,22 +1760,20 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                 />
               </div>
 
-              {/* Hari & Jam */}
-              <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Hari</label>
-                  <select
-                    value={mobileSchedDay}
-                    onChange={(e) => setMobileSchedDay(Number(e.target.value))}
-                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold"
-                  >
-                    {DAYS_OF_WEEK.slice(0, 6).map((d) => (
-                      <option key={d.value} value={d.value}>
-                        {d.short}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* Tanggal & Jam */}
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Tanggal <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={mobileSchedDate}
+                  onChange={(e) => setMobileSchedDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">Mulai</label>
                   <input

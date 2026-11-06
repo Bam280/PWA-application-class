@@ -245,8 +245,12 @@ dikenal dengan `400 Data tidak valid`, jadi aplikasi hanya mengirim field beriku
 | Endpoint | Field yang dikirim |
 |---|---|
 | `POST /announcements` | `title`, `content`, `reads` |
-| `POST /schedules` | `title`, `day` (mis. `Senin`), `time` (mis. `08:00`), `room` (opsional) |
+| `POST /schedules` | `title`, `day` (tanggal sesi, mis. `2026-11-10`), `time` (mis. `08:00`), `room` (opsional) |
 | `POST /reminders` | `task`, `time` (ISO 8601), `completed` |
+
+Jadwal berlaku hanya pada tanggal di `day`, tidak berulang tiap minggu. Kolom `day` harus menerima teks tanggal, bukan
+hanya nama hari. Baris lama yang `day`-nya berisi nama hari tidak tampil di kalender. Baris itu muncul di tabel admin
+sebagai "Belum ada tanggal" sampai diedit.
 
 ID dibuat oleh server. Aplikasi memakai `id` dari balasan server, dan baru menampilkan data setelah server
 menerimanya. `PUT` memakai format yang sama; endpoint `PUT` dan `POST /announcements/:id/reads` belum dipastikan

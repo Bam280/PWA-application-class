@@ -45,8 +45,9 @@ import {
   ROLE_DEFINITIONS,
   BNI_SPEAKER_ROLES,
 } from '../types';
-import { DAYS_OF_WEEK, ASSET_IMAGES } from '../lib/seedData';
+import { ASSET_IMAGES } from '../lib/seedData';
 import { generateSchedulesICS, downloadICSFile } from '../lib/calendarSync';
+import { dayOfWeekOf, formatFullIndonesianDate, parseDateKey, toDateKey } from '../lib/calendarUtils';
 import { notificationService } from '../lib/notifications';
 import { dataService, DatabaseProviderType, AuthHeaderMode, formatScheduleTime, toDatetimeLocalValue } from '../lib/dataService';
 import { CalendarScheduleView } from './CalendarScheduleView';
@@ -161,7 +162,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   const [schedDivision, setSchedDivision] = useState('');
   const [schedLecturer, setSchedLecturer] = useState('Bambang Wijaya, S.T., M.Kom.');
   const [schedSpeakerRole, setSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
-  const [schedDay, setSchedDay] = useState<number>(1);
+  const [schedDate, setSchedDate] = useState(() => toDateKey(new Date()));
   const [schedStart, setSchedStart] = useState('08:30');
   const [schedEnd, setSchedEnd] = useState('11:30');
   const [schedRoom, setSchedRoom] = useState('');
@@ -184,7 +185,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
   const [editSchedDivision, setEditSchedDivision] = useState('');
   const [editSchedLecturer, setEditSchedLecturer] = useState('');
   const [editSchedSpeakerRole, setEditSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
-  const [editSchedDay, setEditSchedDay] = useState(1);
+  const [editSchedDate, setEditSchedDate] = useState('');
   const [editSchedStart, setEditSchedStart] = useState('');
   const [editSchedEnd, setEditSchedEnd] = useState('');
   const [editSchedRoom, setEditSchedRoom] = useState('');
@@ -263,7 +264,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!schedCourse.trim() || !schedDivision.trim() || !schedRoom.trim()) return;
+    const date = parseDateKey(schedDate);
+    if (!date || !schedCourse.trim() || !schedDivision.trim() || !schedRoom.trim()) return;
 
     const saved = await addSchedule({
       courseName: schedCourse,
@@ -271,7 +273,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
       divisionName: schedDivision.trim(),
       lecturer: schedLecturer,
       speakerRole: schedSpeakerRole,
-      dayOfWeek: schedDay,
+      date: schedDate,
+      dayOfWeek: dayOfWeekOf(date),
       startTime: schedStart,
       endTime: schedEnd,
       room: schedRoom.trim(),
@@ -292,7 +295,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
     setEditSchedDivision(sch.divisionName || '');
     setEditSchedLecturer(sch.lecturer);
     setEditSchedSpeakerRole(sch.speakerRole || BNI_SPEAKER_ROLES[0]);
-    setEditSchedDay(sch.dayOfWeek);
+    setEditSchedDate(sch.date || '');
     setEditSchedStart(sch.startTime);
     setEditSchedEnd(sch.endTime);
     setEditSchedRoom(sch.room);
@@ -303,14 +306,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
 
   const handleUpdateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingSchedule) return;
+    const date = parseDateKey(editSchedDate);
+    if (!editingSchedule || !date) return;
 
     const saved = await updateSchedule(editingSchedule.id, {
       courseName: editSchedCourse,
       divisionName: editSchedDivision.trim(),
       lecturer: editSchedLecturer,
       speakerRole: editSchedSpeakerRole,
-      dayOfWeek: editSchedDay,
+      date: editSchedDate,
+      dayOfWeek: dayOfWeekOf(date),
       startTime: editSchedStart,
       endTime: editSchedEnd,
       room: editSchedRoom,
@@ -668,13 +673,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
               </div>
 
               <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
-                <span className="text-xs text-slate-500 font-medium">Jadwal Kuliah Mingguan</span>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-2xl font-extrabold text-slate-900 font-mono">{schedules.length} Sesi</h3>
-                  <span className="text-xs text-amber-700 font-mono bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    Senin - Jumat
-                  </span>
-                </div>
+                <span className="text-xs text-slate-500 font-medium">Jadwal Kuliah</span>
+                <h3 className="text-2xl font-extrabold text-slate-900 font-mono">{schedules.length} Sesi</h3>
                 <p className="text-[11px] text-slate-500">Mata kuliah semester berjalan</p>
               </div>
 
@@ -749,7 +749,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">Kelola Jadwal Perkuliahan Mingguan</h3>
+                <h3 className="text-sm font-bold text-slate-900">Kelola Jadwal Perkuliahan</h3>
                 <p className="text-xs text-slate-500">
                   {canEditClassData
                     ? 'Tambah, perbarui, dan atur jadwal kelas yang tampil langsung di aplikasi mahasiswa'
@@ -871,22 +871,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                     />
                   </div>
 
-                  {/* 5. Jadwal Hari & Jam */}
+                  {/* 5. Tanggal & Jam */}
                   <div>
                     <label className="block text-slate-700 font-semibold mb-1">
-                      Jadwal Hari <span className="text-rose-500">*</span>
+                      Tanggal <span className="text-rose-500">*</span>
                     </label>
-                    <select
-                      value={schedDay}
-                      onChange={(e) => setSchedDay(Number(e.target.value))}
+                    <input
+                      type="date"
+                      required
+                      value={schedDate}
+                      onChange={(e) => setSchedDate(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                    >
-                      {DAYS_OF_WEEK.slice(0, 6).map((d) => (
-                        <option key={d.value} value={d.value}>
-                          {d.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   <div>
@@ -1003,7 +999,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                 <table className="w-full text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3">Hari</th>
+                      <th className="py-2.5 px-3">Tanggal</th>
                       <th className="py-2.5 px-3">Jam</th>
                       <th className="py-2.5 px-3">Mata Kuliah</th>
                       <th className="py-2.5 px-3">Dosen</th>
@@ -1023,7 +1019,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
                       schedules.map((sch) => (
                         <tr key={sch.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="py-3 px-3 font-sans font-bold text-amber-800">
-                            {DAYS_OF_WEEK.find((d) => d.value === sch.dayOfWeek)?.label}
+                            {(() => {
+                              const date = parseDateKey(sch.date);
+                              return date ? formatFullIndonesianDate(date) : <span className="text-rose-700">Belum ada tanggal</span>;
+                            })()}
                           </td>
                           <td className="py-3 px-3">{formatScheduleTime(sch)}</td>
                           <td className="py-3 px-3 font-sans font-semibold text-slate-900">
@@ -2282,18 +2281,14 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onOpenApp, onOpenNotif
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Jadwal Hari</label>
-                <select
-                  value={editSchedDay}
-                  onChange={(e) => setEditSchedDay(Number(e.target.value))}
+                <label className="block text-slate-700 font-semibold mb-1">Tanggal</label>
+                <input
+                  type="date"
+                  required
+                  value={editSchedDate}
+                  onChange={(e) => setEditSchedDate(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                >
-                  {DAYS_OF_WEEK.slice(0, 6).map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div>

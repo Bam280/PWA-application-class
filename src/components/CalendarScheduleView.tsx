@@ -29,6 +29,8 @@ import {
   isSameDay,
   formatFullIndonesianDate,
   getDateInWeek,
+  parseDateKey,
+  toDateKey,
   getGoogleCalendarUrlForDateSchedule,
 } from '../lib/calendarUtils';
 import { getGoogleCalendarUrlForSchedule, downloadICSFile, generateSchedulesICS } from '../lib/calendarSync';
@@ -124,47 +126,28 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
     setShowYearOverview(false);
   };
 
-  // Schedules for the selected week
-  const weekSchedulesWithDates = useMemo(() => {
+  // Schedules whose date falls in the selected week, in date order
+  const weekSchedules = useMemo(() => {
     if (!activeWeek) return [];
-    
-    // For each schedule item, associate it with the specific date of this week
-    const items: Array<{
-      schedule: ScheduleItem;
-      date: Date;
-      dateString: string;
-      isToday: boolean;
-    }> = [];
+    const weekKeys = new Set(activeWeek.days.map((d) => toDateKey(d.date)));
+    return schedules
+      .filter((s) => s.date && weekKeys.has(s.date))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.startTime || '').localeCompare(b.startTime || ''));
+  }, [activeWeek, schedules]);
 
-    // Sort by dayOfWeek, then startTime safely
-    const sorted = [...schedules].sort((a, b) => {
-      const dayA = a?.dayOfWeek || 0;
-      const dayB = b?.dayOfWeek || 0;
-      if (dayA !== dayB) return dayA - dayB;
-      const startA = a?.startTime || '';
-      const startB = b?.startTime || '';
-      return startA.localeCompare(startB);
-    });
-
-    for (const sch of sorted) {
-      // Filter by selected day if set
-      if (selectedDayFilter > 0 && sch.dayOfWeek !== selectedDayFilter) {
-        continue;
-      }
-
-      const specificDate = getDateInWeek(activeWeek, sch.dayOfWeek);
-      const isDateToday = isSameDay(specificDate, today);
-
-      items.push({
-        schedule: sch,
-        date: specificDate,
-        dateString: formatFullIndonesianDate(specificDate),
-        isToday: isDateToday,
+  const weekSchedulesWithDates = useMemo(() => {
+    return weekSchedules
+      .filter((sch) => selectedDayFilter === 0 || sch.dayOfWeek === selectedDayFilter)
+      .map((sch) => {
+        const date = parseDateKey(sch.date) as Date;
+        return {
+          schedule: sch,
+          date,
+          dateString: formatFullIndonesianDate(date),
+          isToday: isSameDay(date, today),
+        };
       });
-    }
-
-    return items;
-  }, [activeWeek, schedules, selectedDayFilter, today]);
+  }, [weekSchedules, selectedDayFilter, today]);
 
   // Deadlines falling in this selected week
   const weekDeadlines = useMemo(() => {
@@ -181,11 +164,7 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
 
   // Export current selected week to ICS
   const handleExportWeekICS = () => {
-    const weekScheds = schedules.filter((s) => {
-      if (selectedDayFilter > 0) return s.dayOfWeek === selectedDayFilter;
-      return true;
-    });
-    const icsContent = generateSchedulesICS(weekScheds);
+    const icsContent = generateSchedulesICS(weekSchedulesWithDates.map((item) => item.schedule));
     const filename = `jadwal-kuliah-${MONTH_NAMES_ID[selectedMonthIndex].toLowerCase()}-minggu-${selectedWeekIndex}.ics`;
     downloadICSFile(icsContent, filename);
   };
@@ -554,12 +533,12 @@ export const CalendarScheduleView: React.FC<CalendarScheduleViewProps> = ({
                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            Semua Hari ({schedules.length})
+            Semua Hari ({weekSchedules.length})
           </button>
 
-          {DAY_NAMES_ID.slice(0, 6).map((d) => {
+          {DAY_NAMES_ID.map((d) => {
             const isSelected = selectedDayFilter === d.value;
-            const count = schedules.filter((s) => s.dayOfWeek === d.value).length;
+            const count = weekSchedules.filter((s) => s.dayOfWeek === d.value).length;
             const dayDate = activeWeek ? getDateInWeek(activeWeek, d.value) : null;
             const isTodayDay = dayDate ? isSameDay(dayDate, today) : false;
 

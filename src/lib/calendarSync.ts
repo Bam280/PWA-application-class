@@ -1,15 +1,5 @@
 import { ScheduleItem, ReminderItem } from '../types';
-
-// Map day numbers (1 = Monday, ..., 7 = Sunday) to iCalendar BYDAY format
-const ICAL_DAY_MAP: Record<number, string> = {
-  1: 'MO',
-  2: 'TU',
-  3: 'WE',
-  4: 'TH',
-  5: 'FR',
-  6: 'SA',
-  7: 'SU',
-};
+import { parseDateKey } from './calendarUtils';
 
 // Calculate next target date for a given day of the week (1-7)
 function getNextDateForDay(dayOfWeek: number, timeStr: string): Date {
@@ -24,6 +14,15 @@ function getNextDateForDay(dayOfWeek: number, timeStr: string): Date {
   target.setDate(now.getDate() + daysUntil);
   target.setHours(hours || 8, minutes || 0, 0, 0);
   return target;
+}
+
+/** When a session starts. Rows without a date fall back to the next time that weekday comes around. */
+function getStartDate(item: ScheduleItem, timeStr: string): Date {
+  const date = parseDateKey(item.date);
+  if (!date) return getNextDateForDay(item.dayOfWeek || 1, timeStr);
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  date.setHours(hours || 8, minutes || 0, 0, 0);
+  return date;
 }
 
 function formatICalDate(date: Date): string {
@@ -47,10 +46,10 @@ function formatGoogleDate(date: Date): string {
 export function generateSchedulesICS(schedules: ScheduleItem[], calendarName = 'Jadwal Kuliah Semester Ini'): string {
   const nowStr = formatICalDate(new Date());
 
-  const eventBlocks = schedules.map(item => {
+  const eventBlocks = schedules.filter(item => parseDateKey(item.date)).map(item => {
     const rawStart = String(item.startTime || '08:00');
     const rawEnd = String(item.endTime || '10:00');
-    const startDate = getNextDateForDay(item.dayOfWeek, rawStart);
+    const startDate = getStartDate(item, rawStart);
     const [startH, startM] = (rawStart.includes(':') ? rawStart : '08:00').split(':').map(Number);
     const [endH, endM] = (rawEnd.includes(':') ? rawEnd : '10:00').split(':').map(Number);
 
@@ -58,7 +57,6 @@ export function generateSchedulesICS(schedules: ScheduleItem[], calendarName = '
     const durationMin = ((endH || 10) * 60 + (endM || 0)) - ((startH || 8) * 60 + (startM || 0));
     endDate.setMinutes(startDate.getMinutes() + (durationMin > 0 ? durationMin : 100));
 
-    const byDay = ICAL_DAY_MAP[item.dayOfWeek] || 'MO';
     const summary = `[ODP IT BNI] ${item.courseCode || 'ODP-IT'} - ${item.courseName || 'Sesi Pelatihan'}`;
     const location = `${item.room || 'Ruang Kelas'}, ${item.building || 'BNI Corporate University'}`;
     const lecturer = item.lecturer || 'Pembicara Divisi';
@@ -73,7 +71,6 @@ export function generateSchedulesICS(schedules: ScheduleItem[], calendarName = '
       `DTSTAMP:${nowStr}`,
       `DTSTART:${formatICalDate(startDate)}`,
       `DTEND:${formatICalDate(endDate)}`,
-      `RRULE:FREQ=WEEKLY;BYDAY=${byDay}`,
       `SUMMARY:${summary}`,
       `LOCATION:${location}`,
       `DESCRIPTION:${description}`,
@@ -103,7 +100,7 @@ export function getGoogleCalendarUrlForSchedule(item: ScheduleItem): string {
   if (!item) return '#';
   const rawStart = String(item.startTime || '08:00');
   const rawEnd = String(item.endTime || '10:00');
-  const startDate = getNextDateForDay(item.dayOfWeek || 1, rawStart);
+  const startDate = getStartDate(item, rawStart);
   const [startH, startM] = (rawStart.includes(':') ? rawStart : '08:00').split(':').map(Number);
   const [endH, endM] = (rawEnd.includes(':') ? rawEnd : '10:00').split(':').map(Number);
 
@@ -111,7 +108,6 @@ export function getGoogleCalendarUrlForSchedule(item: ScheduleItem): string {
   const durationMin = ((endH || 10) * 60 + (endM || 0)) - ((startH || 8) * 60 + (startM || 0));
   endDate.setMinutes(startDate.getMinutes() + (durationMin > 0 ? durationMin : 100));
 
-  const byDay = ICAL_DAY_MAP[item.dayOfWeek] || 'MO';
   const title = encodeURIComponent(`[ODP IT BNI] ${item.courseCode || 'ODP-IT'} - ${item.courseName || 'Sesi Pelatihan'}`);
   const lecturer = item.lecturer || 'Pembicara Divisi';
   const speakerText = item.speakerRole ? `${lecturer} (${item.speakerRole})` : lecturer;
@@ -121,9 +117,8 @@ export function getGoogleCalendarUrlForSchedule(item: ScheduleItem): string {
   );
   const location = encodeURIComponent(`${item.room || 'Ruang Kelas'}, ${item.building || 'BNI Corporate University'}`);
   const dates = `${formatGoogleDate(startDate)}/${formatGoogleDate(endDate)}`;
-  const recur = encodeURIComponent(`RRULE:FREQ=WEEKLY;BYDAY=${byDay}`);
 
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}&recur=${recur}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
 }
 
 /**
