@@ -43,9 +43,7 @@ import {
   StudentMember,
   UserRole,
   ROLE_DEFINITIONS,
-  BNI_IT_DIVISIONS,
   BNI_SPEAKER_ROLES,
-  BNI_TRAINING_ROOMS,
 } from '../types';
 import { DAYS_OF_WEEK, ASSET_IMAGES } from '../lib/seedData';
 import {
@@ -171,14 +169,13 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
   const [showMobileAddSchedModal, setShowMobileAddSchedModal] = useState(false);
   const [mobileSchedCourse, setMobileSchedCourse] = useState('');
-  const [mobileSchedCode, setMobileSchedCode] = useState('');
-  const [mobileSchedDivision, setMobileSchedDivision] = useState<string>(BNI_IT_DIVISIONS[0]);
+  const [mobileSchedDivision, setMobileSchedDivision] = useState('');
   const [mobileSchedLecturer, setMobileSchedLecturer] = useState('');
   const [mobileSchedSpeakerRole, setMobileSchedSpeakerRole] = useState<string>(BNI_SPEAKER_ROLES[0]);
   const [mobileSchedDay, setMobileSchedDay] = useState(1);
   const [mobileSchedStart, setMobileSchedStart] = useState('08:30');
   const [mobileSchedEnd, setMobileSchedEnd] = useState('11:30');
-  const [mobileSchedRoom, setMobileSchedRoom] = useState(BNI_TRAINING_ROOMS[0]);
+  const [mobileSchedRoom, setMobileSchedRoom] = useState('');
 
   // Role Management State on Mobile (Super Admin)
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -311,25 +308,24 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
 
   const handleMobileCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobileSchedCourse.trim()) return;
+    if (!mobileSchedCourse.trim() || !mobileSchedDivision.trim() || !mobileSchedRoom.trim()) return;
 
     const saved = await addSchedule({
       courseName: mobileSchedCourse,
-      courseCode: mobileSchedCode,
-      divisionName: mobileSchedDivision,
+      courseCode: '',
+      divisionName: mobileSchedDivision.trim(),
       lecturer: mobileSchedLecturer,
       speakerRole: mobileSchedSpeakerRole,
       dayOfWeek: mobileSchedDay,
       startTime: mobileSchedStart,
       endTime: mobileSchedEnd,
-      room: mobileSchedRoom,
+      room: mobileSchedRoom.trim(),
       building: 'BNI Corporate University Jakarta',
       classType: 'offline',
     });
     if (!saved) return;
 
     setMobileSchedCourse('');
-    setMobileSchedCode('');
     setShowMobileAddSchedModal(false);
   };
 
@@ -1662,17 +1658,14 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                 <label className="block text-slate-700 font-semibold mb-1">
                   Nama Divisi BNI <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Divisi Enterprise Architecture"
                   value={mobileSchedDivision}
                   onChange={(e) => setMobileSchedDivision(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                >
-                  {BNI_IT_DIVISIONS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                />
               </div>
 
               {/* Materi Sesi */}
@@ -1687,20 +1680,6 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                   value={mobileSchedCourse}
                   onChange={(e) => setMobileSchedCourse(e.target.value)}
                   className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
-                />
-              </div>
-
-              {/* Kode Modul */}
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">
-                  Kode Modul Sesi <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="ODP-EAS-01"
-                  value={mobileSchedCode}
-                  onChange={(e) => setMobileSchedCode(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono font-bold"
                 />
               </div>
 
@@ -1741,17 +1720,14 @@ export const StudentMobileApp: React.FC<StudentMobileAppProps> = ({ onOpenPortal
                 <label className="block text-slate-700 font-semibold mb-1">
                   Ruang Kelas yang Digunakan <span className="text-rose-500">*</span>
                 </label>
-                <select
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Ruang Sinabung Lt. 3 - BNI Corpu Jakarta"
                   value={mobileSchedRoom}
                   onChange={(e) => setMobileSchedRoom(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-semibold"
-                >
-                  {BNI_TRAINING_ROOMS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
+                />
               </div>
 
               {/* Hari & Jam */}

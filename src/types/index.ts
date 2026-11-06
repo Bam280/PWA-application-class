@@ -88,32 +88,12 @@ export interface ScheduleItem {
   updatedAt?: string;
 }
 
-export const BNI_IT_DIVISIONS = [
-  'Divisi Enterprise Architecture & Strategy (EAS)',
-  'Divisi Information Security & Cyber Defense (ISC)',
-  'Divisi Digital Banking Product & Platform (DBP)',
-  'Divisi Core Banking & Payment Systems (CPS)',
-  'Divisi Data Analytics, AI & Big Data (DAB)',
-  'Divisi IT Infrastructure & Cloud Operations (ICO)',
-  'Divisi IT Quality Assurance & Governance (QAG)',
-  'Divisi Open Banking & API Integration (OAP)',
-];
-
 export const BNI_SPEAKER_ROLES = [
   'Department Head (Dept Head)',
   'Team Leader',
   'Vice President (VP)',
   'Lead Solution Architect',
   'Principal System Engineer',
-];
-
-export const BNI_TRAINING_ROOMS = [
-  'Ruang Sinabung Lt. 3 - BNI Corpu Jakarta',
-  'Ruang Rinjani Lt. 2 - BNI Corpu Jakarta',
-  'Ruang Bromo Lt. 4 - BNI Corpu Jakarta',
-  'Innovation Lab - Graha BNI Sudirman Lt. 15',
-  'Auditorium Utama Corpu Lt. 1',
-  'Virtual Class (Zoom Meeting BNI Corpu)',
 ];
 
 export type Priority = 'normal' | 'important' | 'urgent';
