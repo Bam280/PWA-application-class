@@ -13,7 +13,7 @@ import { auth, db, googleProvider } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { offlineStorage } from '../lib/offlineStorage';
 import { ASSET_IMAGES } from '../lib/seedData';
-import { roleApi, RoleApiError, RoleApiUser, isRoleApiConfigured } from '../lib/roleApi';
+import { roleApi, RoleApiError, RoleApiUser } from '../lib/roleApi';
 
 interface AuthContextType {
   /** Signed-in user with a role confirmed by the role API or local resolution; null when signed out. */
@@ -110,9 +110,9 @@ function describeAuthError(err: unknown): string | null {
     case 'auth/popup-blocked':
       return 'Jendela login diblokir oleh browser. Izinkan pop-up untuk situs ini, lalu tekan tombol masuk lagi.';
     case 'auth/unauthorized-domain':
-      return `Domain ${window.location.hostname} belum diizinkan di Firebase Authentication. Tambahkan domain ini di Firebase Console → Authentication → Settings → Authorized domains.`;
+      return `Login belum tersedia dari alamat ini. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/operation-not-allowed':
-      return 'Metode login ini belum diaktifkan di Firebase Console → Authentication → Sign-in method.';
+      return `Metode login ini belum tersedia. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/invalid-credential':
     case 'auth/invalid-login-credentials':
     case 'auth/wrong-password':
@@ -129,10 +129,11 @@ function describeAuthError(err: unknown): string | null {
     case 'auth/user-disabled':
       return 'Akun ini telah dinonaktifkan. Hubungi administrator.';
     case 'auth/admin-restricted-operation':
-      return 'Operasi dibatasi oleh setelan Firebase Console (auth/admin-restricted-operation). Pendaftaran pengguna baru atau provider Google Sign-In belum diaktifkan di Firebase Console → Authentication.';
+      // Firebase raises this only when a new account would be created; existing accounts still sign in.
+      return `Akun Google ini belum bisa digunakan untuk masuk. Silakan hubungi admin. (Kode: ${code})`;
     case 'auth/internal-error':
     default:
-      return 'Gagal masuk. Silakan coba lagi.';
+      return `Gagal masuk. Silakan coba lagi.${code ? ` (Kode: ${code})` : ''}`;
   }
 }
 
@@ -153,6 +154,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   // Ignores results of an older role lookup when a newer one (or a sign-out) has started.
   const accessRequestId = useRef(0);
+  // Uid whose access request was already queued this session; also marks "on the waiting screen".
+  const pendingUidRef = useRef<string | null>(null);
 
   // Listen to network status changes
   useEffect(() => {
@@ -196,80 +199,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const PASSWORD_ADMIN_ONLY =
       'Login dengan email & password khusus untuk admin. Silakan masuk dengan akun Google Anda.';
 
-    // If external role API is not configured, resolve access locally using project role rules
-    if (!isRoleApiConfigured) {
+    /** Not in the role table yet: queue one request for a Super Admin and show the waiting screen. */
+    const markPending = () => {
       const email = (fbUser.email || '').trim().toLowerCase();
-      const isSuperAdmin = email === 'andenboyo@gmail.com' || email === 'julionedna23@gmail.com' || email === 'lukigio23@gmail.com';
-      const members = offlineStorage.getClassMembers();
-      const foundMember = members.find(m => m.email.toLowerCase() === email);
+      const displayName = fbUser.displayName || email.split('@')[0];
 
-      // If user logs in with SSO but email is not previously registered and not Super Admin:
-      // User must be confirmed by Super Admin in Super Admin Settings menu
-      if (!isSuperAdmin && !foundMember) {
+      // The waiting screen re-checks every 5s; only the first check may file the request,
+      // otherwise a rejected request would reappear within seconds.
+      if (pendingUidRef.current !== fbUser.uid) {
+        pendingUidRef.current = fbUser.uid;
         offlineStorage.addPendingApproval({
           uid: fbUser.uid,
           email,
-          displayName: fbUser.displayName || email.split('@')[0],
+          displayName,
           avatarUrl: fbUser.photoURL || undefined,
         });
-
-        // Sync request to Firestore so all super admins see it in real-time
-        try {
-          setDoc(doc(db, 'pending_approvals', fbUser.uid), {
+        setDoc(
+          doc(db, 'pending_approvals', fbUser.uid),
+          {
             id: fbUser.uid,
             uid: fbUser.uid,
             email,
-            displayName: fbUser.displayName || email.split('@')[0],
+            displayName,
             avatarUrl: fbUser.photoURL || null,
             requestedAt: new Date().toISOString(),
             status: 'pending',
-          }, { merge: true }).catch(() => undefined);
-        } catch {
-          // ignore offline
-        }
-
-        const pendingAccess: RoleApiUser = {
-          id: fbUser.uid,
-          email: fbUser.email || '',
-          name: fbUser.displayName || email.split('@')[0],
-          nim: 'Menunggu Konfirmasi Super Admin',
-          role: 'class_member',
-          avatarUrl: fbUser.photoURL || undefined,
-        };
-
-        writeAccessCache(fbUser.uid, null);
-        setUser(buildProfile(fbUser, pendingAccess, 'pending'));
-        setRoleFromCache(false);
-        setResolvingAccess(false);
-        return;
+          },
+          { merge: true }
+        ).catch(() => undefined); // Already queued (only admins may update), or offline.
       }
 
-      const resolvedRole: UserRole = isSuperAdmin
-        ? 'super_admin'
-        : foundMember
-        ? foundMember.role
-        : 'class_member';
-
-      if (signInProvider === 'password' && resolvedRole === 'class_member') {
-        await rejectSession(PASSWORD_ADMIN_ONLY);
-        return;
-      }
-
-      const localAccess: RoleApiUser = {
+      const pendingAccess: RoleApiUser = {
         id: fbUser.uid,
         email: fbUser.email || '',
-        name: foundMember?.name || fbUser.displayName || (fbUser.email || '').split('@')[0] || (isSuperAdmin ? 'Super Admin BNI' : 'Peserta ODP IT'),
-        nim: foundMember?.nim || (isSuperAdmin ? 'NIP: BNI-CORPU-019' : 'ODP-IT-2026'),
-        role: resolvedRole,
-        avatarUrl: fbUser.photoURL || foundMember?.avatarUrl,
+        name: displayName,
+        nim: 'Menunggu Konfirmasi Super Admin',
+        role: 'class_member',
+        avatarUrl: fbUser.photoURL || undefined,
       };
-
-      writeAccessCache(fbUser.uid, localAccess);
-      setUser(buildProfile(fbUser, localAccess, 'active'));
+      writeAccessCache(fbUser.uid, null);
+      setUser(buildProfile(fbUser, pendingAccess, 'pending'));
       setRoleFromCache(false);
-      setResolvingAccess(false);
-      return;
-    }
+    };
 
     try {
       const tokenResult = await fbUser.getIdTokenResult();
@@ -283,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
+      pendingUidRef.current = null;
       writeAccessCache(fbUser.uid, access);
       setUser(buildProfile(fbUser, access, 'active'));
       setRoleFromCache(false);
@@ -294,76 +266,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (requestId !== accessRequestId.current) return;
       const apiErr = err instanceof RoleApiError ? err : null;
 
-      const email = (fbUser.email || '').trim().toLowerCase();
-      const isSuperAdmin = email === 'andenboyo@gmail.com' || email === 'julionedna23@gmail.com' || email === 'lukigio23@gmail.com';
-      const members = offlineStorage.getClassMembers();
-      const foundMember = members.find(m => m.email.toLowerCase() === email);
-
-      if (isSuperAdmin) {
-        const superAdminAccess: RoleApiUser = {
-          id: fbUser.uid,
-          email: fbUser.email || '',
-          name: 'Super Admin ODP IT BNI',
-          nim: 'NIP: BNI-CORPU-019',
-          role: 'super_admin',
-          avatarUrl: fbUser.photoURL || ASSET_IMAGES.superAdminAvatar,
-        };
-        writeAccessCache(fbUser.uid, superAdminAccess);
-        setUser(buildProfile(fbUser, superAdminAccess, 'active'));
-        return;
-      }
-
-      if (!foundMember) {
-        // Unregistered SSO user -> mark pending approval
-        offlineStorage.addPendingApproval({
-          uid: fbUser.uid,
-          email,
-          displayName: fbUser.displayName || email.split('@')[0],
-          avatarUrl: fbUser.photoURL || undefined,
-        });
-
-        try {
-          setDoc(doc(db, 'pending_approvals', fbUser.uid), {
-            id: fbUser.uid,
-            uid: fbUser.uid,
-            email,
-            displayName: fbUser.displayName || email.split('@')[0],
-            avatarUrl: fbUser.photoURL || null,
-            requestedAt: new Date().toISOString(),
-            status: 'pending',
-          }, { merge: true }).catch(() => undefined);
-        } catch {
-          // ignore offline
+      // The API answered: its decision is final, whatever the email is.
+      if (apiErr?.kind === 'not_registered') {
+        if (signInProvider === 'password') {
+          await rejectSession((apiErr.status === 403 && apiErr.serverMessage) || PASSWORD_ADMIN_ONLY);
+        } else {
+          markPending();
         }
-
-        const pendingAccess: RoleApiUser = {
-          id: fbUser.uid,
-          email: fbUser.email || '',
-          name: fbUser.displayName || email.split('@')[0],
-          nim: 'Menunggu Konfirmasi Super Admin',
-          role: 'class_member',
-          avatarUrl: fbUser.photoURL || undefined,
-        };
-
-        writeAccessCache(fbUser.uid, null);
-        setUser(buildProfile(fbUser, pendingAccess, 'pending'));
-        setRoleFromCache(false);
+        return;
+      }
+      if (apiErr?.kind === 'unauthorized') {
+        await rejectSession('Sesi tidak dapat diverifikasi oleh server. Silakan masuk kembali.');
         return;
       }
 
-      // Found in class roster
-      const localAccess: RoleApiUser = {
-        id: fbUser.uid,
-        email: fbUser.email || '',
-        name: foundMember.name || fbUser.displayName || email.split('@')[0],
-        nim: foundMember.nim || 'ODP-IT-2026',
-        role: foundMember.role,
-        avatarUrl: fbUser.photoURL || foundMember.avatarUrl,
-      };
+      // A waiting user's background re-check failing must not replace the waiting screen.
+      if (pendingUidRef.current === fbUser.uid) {
+        console.warn('Role API unavailable while waiting for approval:', err);
+        return;
+      }
 
-      writeAccessCache(fbUser.uid, localAccess);
-      setUser(buildProfile(fbUser, localAccess, 'active'));
-      setRoleFromCache(true);
+      // API unreachable or broken: only the last role it confirmed for this account may be used.
+      const cached = apiErr?.kind === 'config' ? null : readAccessCache(fbUser.uid);
+      if (cached) {
+        if (signInProvider === 'password' && cached.role === 'class_member') {
+          await rejectSession(PASSWORD_ADMIN_ONLY);
+          return;
+        }
+        setUser(buildProfile(fbUser, cached, 'active'));
+        setRoleFromCache(true);
+        console.warn('Role API unavailable, using cached role:', err);
+      } else {
+        setUser(null);
+        setAccessError(
+          apiErr?.message ||
+            (err instanceof FirebaseError
+              ? describeAuthError(err) || 'Gagal memverifikasi sesi.'
+              : 'Gagal memuat hak akses dari server.')
+        );
+        console.error('Role lookup failed:', err);
+      }
     } finally {
       if (requestId === accessRequestId.current) setResolvingAccess(false);
     }
@@ -380,6 +322,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resolveAccess(fbUser);
       } else {
         accessRequestId.current++;
+        pendingUidRef.current = null;
         setUser(null);
         setAccessError(null);
         setRoleFromCache(false);

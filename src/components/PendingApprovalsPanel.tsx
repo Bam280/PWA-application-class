@@ -27,6 +27,7 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
   // Store form state per pending approval id: { [id]: { role: UserRole, nim: string } }
   const [formData, setFormData] = useState<Record<string, { role: UserRole; nim: string }>>({});
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [failedEmail, setFailedEmail] = useState<string | null>(null);
 
   const getRole = (id: string): UserRole => formData[id]?.role || 'class_member';
   const getNim = (id: string, email: string): string => {
@@ -52,9 +53,11 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
   const handleApprove = async (p: PendingUserApproval) => {
     try {
       setProcessingId(p.id);
+      setFailedEmail(null);
       const role = getRole(p.id);
       const nim = getNim(p.id, p.email);
-      await onApprove(p.id, role, nim);
+      const approved = await onApprove(p.id, role, nim);
+      if (!approved) setFailedEmail(p.email);
     } finally {
       setProcessingId(null);
     }
@@ -93,6 +96,15 @@ export const PendingApprovalsPanel: React.FC<PendingApprovalsPanelProps> = ({
           Jika ada mahasiswa atau anggota yang login menggunakan akun Google SSO namun emailnya belum terdaftar sebelumnya di database, mereka akan tertahan di layar menunggu konfirmasi. Super Admin dapat menyetujui, menentukan role (Admin Kelas atau Member Kelas), dan menetapkan NIM/NIP peserta di bawah ini.
         </p>
       </div>
+
+      {failedEmail && (
+        <div role="alert" className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <span>
+            Gagal menyetujui <strong className="break-all">{failedEmail}</strong> karena data belum tersimpan di database. Permintaannya tetap di antrean, dan penyebabnya ada di notifikasi.
+          </span>
+        </div>
+      )}
 
       {/* Pending List or Empty State */}
       {pendingApprovals.length === 0 ? (
